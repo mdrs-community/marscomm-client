@@ -1,12 +1,3 @@
-/* ************************************************************************
-
-   Copyright: 2024 undefined
-
-   License: MIT license
-
-   Authors: undefined
-
-************************************************************************ */
 
 /**
  * This is the main application class of "myapp"
@@ -15,27 +6,14 @@
  */
 qx.Class.define("myapp.Application",
 {
-  extend : qx.application.Standalone,
+  extend: qx.application.Standalone,
 
-
-
-  /*
-  *****************************************************************************
-     MEMBERS
-  *****************************************************************************
-  */
-
-  members :
+  members:
   {
-    /**
-     * This method contains the initial application code and gets called
-     * during startup of the application
-     *
-     * @lint ignoreDeprecated(alert)
+    /** @lint ignoreDeprecated(alert)
      */
     main()
     {
-      // Call super class
       super.main();
 
       // Enable logging in debug variant
@@ -67,17 +45,11 @@ qx.Class.define("myapp.Application",
       let addButton = new qx.ui.form.Button("Add to Chat");
       addButton.addListener("execute", () => this._addContent(chatPanel, numberInput));
       topPanel.add(addButton);
-
       
       // Container for the middle section
       let middleContainer = new qx.ui.container.Composite(new qx.ui.layout.HBox());
       middleContainer.setDecorator("main");
       mainContainer.add(middleContainer, { flex: 1 });
-
-      //const button1 = new qx.ui.form.Button("Click me", "myapp/test.png");
-      //middleContainer.add(button1, { flex: 2 });
-      //button1.addListener("execute", function() { alert("Hello World!"); });
-
 
       // Chat panel container
       let chatContainer = new qx.ui.container.Composite(new qx.ui.layout.VBox());
@@ -95,16 +67,7 @@ qx.Class.define("myapp.Application",
       let chatInputContainer = new qx.ui.container.Composite(new qx.ui.layout.HBox(10));
       chatInputContainer.setPadding(10);
       chatContainer.add(chatInputContainer);
-
-      //const button2 = new qx.ui.form.Button("Clack me", "myapp/test.png");
-      //chatContainer.add(button2);
-      //button2.addListener("execute", function() { alert("Hello Douche!"); });
-
-      //const button3 = new qx.ui.form.Button("Clonck me", "myapp/test.png");
-      //chatInputContainer.add(button3);
-      //button3.addListener("execute", function() { alert("Hello Baag!"); });
-
-      
+   
       let chatInput = new qx.ui.form.TextField();
       chatInput.setPlaceholder("Type a message...");
       chatInputContainer.add(chatInput, { flex: 1 });
@@ -145,6 +108,41 @@ qx.Class.define("myapp.Application",
       }
     },
 
+    async _transmitMessage(message)
+    {
+      const data = 
+      {
+        message: message,
+        username: "matts",
+        token: "Boken"
+      };
+      alert(JSON.stringify(data));
+      try 
+      {
+        const response = await fetch('http://localhost:8081/ims', 
+        {
+            method: 'POST',
+            //mode: 'no-cors', // this fixes CORS problems but introduces other problems -- DON'T USE
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+
+        if (response.ok) 
+        {
+            const result = await response.text();
+            alert('File uploaded successfully: ' + result);
+        } else 
+        {
+            alert('File upload failed.');
+            alert(JSON.stringify(response));
+        }
+      } catch (error) 
+      {
+        console.error('Error uploading file:', error);
+        alert('An error occurred while uploading the file.');
+      }
+    },
+
     _sendMessage(chatPanel, chatInput) 
     {
       let message = chatInput.getValue().trim();
@@ -161,6 +159,7 @@ qx.Class.define("myapp.Application",
       });
       chatPanel.add(newMessage);
       chatInput.setValue("");
+      this._transmitMessage(formattedMessage);
     },
 
     _parseMessage(message) 
