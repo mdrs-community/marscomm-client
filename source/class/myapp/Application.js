@@ -79,7 +79,7 @@ qx.Class.define("myapp.Application",
       topPanel.setDecorator("main");
       mainContainer.add(topPanel);
 
-      let numberLabel = new qx.ui.basic.Label("Choose a number, foo 04:");
+      let numberLabel = new qx.ui.basic.Label("Choose a number, foo 05:");
       numberLabel.setTextColor("blue");
       topPanel.add(numberLabel);
 
@@ -171,8 +171,12 @@ qx.Class.define("myapp.Application",
       });
       this.__reportUIs = reportUIs;
 
-      this._attemptLogin("matts", "yo"); //TODO: remove autologin before release
-      this._changeSol(this, 0);
+      //let quillEditor = new myapp.QuillEditor();
+      //rightPanel.add(quillEditor, { edge: 0 });
+
+      await this._attemptLogin("matts", "yo"); //TODO: remove autologin before release
+      await this._changeSol(this, 0);
+
     },
 
     sleep(ms) { return new Promise((resolve) => { setTimeout(resolve, ms); }); },
@@ -254,7 +258,7 @@ qx.Class.define("myapp.Application",
         body.username = this.__username;
         body.token = "Boken";
       }
-      alert("POSTality: " + JSON.stringify(body));
+      console.log("POSTality: " + JSON.stringify(body));
       try 
       {
         const response = await fetch('http://localhost:8081/' + endpoint, 
@@ -567,8 +571,14 @@ qx.Class.define("myapp.ReportUI",
     //fsb.setEnabled(false); // disabling the FileSelectorButton somehow prevents it working properly even after it's re-enabled -- FARUK
     this.fsButton = fsb;
 
+    let editButton = new qx.ui.form.Button("Edit");
+    const that = this;
+    editButton.addListener("execute", function () { that.openReportEditor(); that.realizeState(); } );
+    container.add(editButton);
+    this.editButton = editButton;
+    
     let txButton = new qx.ui.form.Button("Transmit");
-    txButton.addListener("execute", function () { this.transmitted = true; this.realizeState(); } );
+    txButton.addListener("execute", function () { that.transmitted = true; that.realizeState(); } );
     txButton.setEnabled(false);
     container.add(txButton);
     this.txButton = txButton;
@@ -586,6 +596,7 @@ qx.Class.define("myapp.ReportUI",
     container: null,
     icon: null,
     fsButton: null,
+    editButton: null,
     txButton: null,
     label: null,
 
@@ -624,8 +635,143 @@ qx.Class.define("myapp.ReportUI",
       else if (this.state === "Transmitted") color = "purple";
       else if (this.state === "Received")    color = "green";
       if (this.label) this.label.setTextColor(color);
-    }
+    },
 
+    openReportEditor()
+    {
+      // Create and open the CKEditor window
+      let ckEditorWindow = new myapp.CKEditorWindow(this, this.content);
+      ckEditorWindow.open();
+      //doc.add(ckEditorWindow);      
+    },
+
+    setContent(content)
+    {
+      this.content = content;
+      this.realizeState();
+    }
   }
 });
 
+
+
+qx.Class.define("myapp.CKEditor", 
+{ extend: qx.ui.core.Widget,
+  construct: function() 
+  {
+    this.base(arguments);
+    this._setLayout(new qx.ui.layout.Grow());
+    this.addListenerOnce("appear", this.__initCKEditor, this); // Add an appear listener to initialize CKEditor
+    this.addListener("resize", this.__onResize, this); // Add a resize listener to adjust CKEditor height
+  },
+
+  members: 
+  {
+    __editor: null,
+    __editorId: null,
+
+    _createContentElement: function() 
+    {
+      // Create a div with a unique ID for CKEditor to attach to
+      this.__editorId = "ckeditor-" + this.toHashCode();
+      let div = new qx.html.Element("div", null, 
+      {
+        "id": this.__editorId,
+        "style": "height:100%;"
+      });
+
+      return div;
+    },
+
+    __initCKEditor: function() 
+    {
+      // Initialize CKEditor with the unique ID
+      let editorElement = document.getElementById(this.__editorId);
+      this.__editor = CKEDITOR.replace(editorElement, { height: '100%' } );
+
+      // Explicitly focus the editor after initialization
+      qx.event.Timer.once(() => { this.__editor.focus(); }, this, 300);
+    },
+
+    __onResize: function() { this.__updateEditorHeight(); },
+
+    __updateEditorHeight: function() 
+    {
+      if (this.__editor) 
+      {
+        //let containerHeight = this.getContentElement().getDomElement().clientHeight;
+        let containerHeight = this.getBounds().height - 50;
+        console.log("winder size: " + containerHeight);
+        this.__editor.resize('100%', containerHeight);
+      }
+    },
+
+    // Method to set data into the editor
+    setContent: function(data) 
+    {
+      if (this.__editor) 
+        this.__editor.setData(data);
+      else 
+        this.addListenerOnce("editorReady", () => { this.__editor.setData(data); } );
+    },
+    
+        // Method to get data from the editor
+    getContent: function() 
+    {
+      if (this.__editor) 
+        return this.__editor.getData();
+      return "";
+    }
+  }
+});
+
+qx.Class.define("myapp.CKEditorWindow", 
+{ extend: qx.ui.window.Window,
+  construct: function(parent, content) 
+  {
+    this.base(arguments, "CKEditor");
+    this.setLayout(new qx.ui.layout.Dock());
+    this.setWidth(800);
+    this.setHeight(600);
+    this.center();
+
+    this.parent = parent;
+    // Add the CKEditor to the window
+    this.ckEditor = new myapp.CKEditor();
+    this.add(this.ckEditor);
+
+    // Enable focus for the window
+    this.setModal(true);
+    this.setAllowClose(true);
+    this.setAllowMinimize(false);
+
+    this.ckEditor.setContent(content);
+
+    let toolbar = new qx.ui.toolbar.ToolBar();
+    let okButton = new qx.ui.toolbar.Button("OK");
+    okButton.addListener("execute", this.__onOK, this);
+    toolbar.add(okButton);
+
+    let cancelButton = new qx.ui.toolbar.Button("Cancel");
+    cancelButton.addListener("execute", this.__onCancel, this);
+    toolbar.add(cancelButton);
+
+    this.add(toolbar, { edge: "south" });
+  },
+
+  members: 
+  {
+    ckEditor: null,
+    parent: null,
+
+    __onOK: function() 
+    {
+      let content = this.ckEditor.getContent();
+      this.parent.setContent(content);
+      this.close();
+    },
+
+    __onCancel: function() { this.close(); }
+  }
+
+});
