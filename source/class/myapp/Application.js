@@ -1,3 +1,4 @@
+function log(str) { console.log(str); }
 
 /**
  * This is the main application class of "myapp"
@@ -295,16 +296,26 @@ qx.Class.define("myapp.Application",
       return await this._doPOST('login', body);
     },
 
-    async _sendReport(name, content)
+    async _sendReport(report)
     {
       const body = 
       {
-        reportName: name,
-        content: content, // fileContent,
+        reportName: report.name,
+        content: report.content, // fileContent,
         username: "matts",
         token: "Boken"
       };
       this._doPOST('reports/update', body);
+    },
+
+    async _transmitReport(report)
+    {
+      const body = 
+      {
+        username: "matts",
+        token: "Boken"
+      };
+      this._doPOST('reports/transmit/' + report.name, body);
     },
 
     async _recvSol(solNum) { return await this._doGET('sols/' + solNum); },
@@ -537,8 +548,10 @@ qx.Class.define("myapp.ReportUI",
 { extend: qx.core.Object, 
   construct: function(name, parentContainer, commsDelay, network) 
   {
+    const that = this;
     this.base(arguments); // Call superclass constructor
     this.name = name;
+    this.network = network;
     this.commsDelay = commsDelay;
 
     let container = new qx.ui.container.Composite(new qx.ui.layout.HBox(10));
@@ -560,9 +573,9 @@ qx.Class.define("myapp.ReportUI",
         const reader = new FileReader(); 
         reader.addEventListener('load', () => 
         { 
-          let content = reader.result; 
-          console.log("The first 4 chrs are: " + content); 
-          network._sendReport(name, content);
+          that.report.content = reader.result;
+          console.log("The first 4 chars are: " + that.report.content); 
+          that.onChange();
         });
         reader.readAsText(file.slice(0,4));
       }
@@ -572,13 +585,18 @@ qx.Class.define("myapp.ReportUI",
     this.fsButton = fsb;
 
     let editButton = new qx.ui.form.Button("Edit");
-    const that = this;
-    editButton.addListener("execute", function () { that.openReportEditor(); that.realizeState(); } );
+    editButton.addListener("execute", function () { that.openReportEditor(); } );
     container.add(editButton);
     this.editButton = editButton;
     
     let txButton = new qx.ui.form.Button("Transmit");
-    txButton.addListener("execute", function () { that.transmitted = true; that.realizeState(); } );
+    txButton.addListener("execute", function () 
+    { 
+      that.report.transmitted = true;
+      that.report.xmitTime = new Date();
+      that.network._transmitReport(that.report); // tell server to send report to Earth
+      that.realizeState("Transmitted"); 
+    } );
     txButton.setEnabled(false);
     container.add(txButton);
     this.txButton = txButton;
@@ -591,6 +609,7 @@ qx.Class.define("myapp.ReportUI",
   members: 
   {
     name: null,
+    network: null,
     commsDelay: 0,
 
     container: null,
@@ -601,32 +620,41 @@ qx.Class.define("myapp.ReportUI",
     label: null,
 
     state: "Unused", // ReportUI states: Unused, Empty, Populated, Transmitted, Received
-    content: null,
-    txTime: new Date(),
+    report: null,
 
-    reset() { this.state = "Unused"; this.realizeState(); },
+    reset() { console.log("reset"); this.realizeState("Unused"); },
 
-    update(report)
-    {
-      this.state = this.computeState(report);
-      this.content = report.content;
-      this.txTime = report.time;
+    onChange() 
+    { 
+      console.log("something changed, Holmez");
+      this.network._sendReport(this.report);
       this.realizeState();
     },
 
-    computeState(report)
+    update(report) 
+    { //  instead of copying state out, we need to keep a reference to the report so that we can later update it e.g. when the xmit button is pressed
+      console.log("new report incoming: " + report.name);
+      this.report = report;
+      this.realizeState();
+    },
+
+    computeState()
     {
-      if (report.transmitted) 
-        if ( commsDelayPassed(this.time, this.commsDelay) ) return "Received";
+      console.log("compute THIS: " + JSON.stringify(this.report));
+      if (this.report.transmitted) 
+        if ( commsDelayPassed(this.report.xmitTime, this.commsDelay) ) return "Received";
         else return "Transmitted";
 
-      if (report.content) return "Populated";
+      if (this.report.content) return "Populated";
       else return "Empty";
     },
 
-    realizeState()
+    realizeState(forcedState)
     {
+      this.state = forcedState ? forcedState : this.computeState();
+      console.log("realizing new state: " + this.state);
       if (this.fsButton) this.fsButton.setEnabled(this.state !== "Unused");
+      if (this.editButton) this.editButton.setEnabled(this.state !== "Unused");
       if (this.txButton) this.txButton.setEnabled(this.state !== "Unused" && this.state !== "Empty");
       let color;
       if      (this.state === "Unused")      color = "gray";
@@ -640,15 +668,16 @@ qx.Class.define("myapp.ReportUI",
     openReportEditor()
     {
       // Create and open the CKEditor window
-      let ckEditorWindow = new myapp.CKEditorWindow(this, this.content);
+      let ckEditorWindow = new myapp.CKEditorWindow(this, this.report.content);
       ckEditorWindow.open();
       //doc.add(ckEditorWindow);      
     },
 
     setContent(content)
     {
-      this.content = content;
-      this.realizeState();
+      console.log("setting model content: " + content);
+      this.report.content = content;
+      this.onChange();
     }
   }
 });
@@ -657,10 +686,11 @@ qx.Class.define("myapp.ReportUI",
 
 qx.Class.define("myapp.CKEditor", 
 { extend: qx.ui.core.Widget,
-  construct: function() 
+  construct: function(afterInit) 
   {
     this.base(arguments);
     this._setLayout(new qx.ui.layout.Grow());
+    this.afterInit = afterInit;
     this.addListenerOnce("appear", this.__initCKEditor, this); // Add an appear listener to initialize CKEditor
     this.addListener("resize", this.__onResize, this); // Add a resize listener to adjust CKEditor height
   },
@@ -669,6 +699,7 @@ qx.Class.define("myapp.CKEditor",
   {
     __editor: null,
     __editorId: null,
+    afterInit: null,
 
     _createContentElement: function() 
     {
@@ -686,11 +717,18 @@ qx.Class.define("myapp.CKEditor",
     __initCKEditor: function() 
     {
       // Initialize CKEditor with the unique ID
+      console.log("init dat bitch");
       let editorElement = document.getElementById(this.__editorId);
       this.__editor = CKEDITOR.replace(editorElement, { height: '100%' } );
 
       // Explicitly focus the editor after initialization
-      qx.event.Timer.once(() => { this.__editor.focus(); }, this, 300);
+      qx.event.Timer.once(() => 
+      { 
+        if (this.afterInit) this.afterInit(); 
+        this.__editor.focus();
+        this.__updateEditorHeight();
+        console.log("post init fun"); 
+      }, this, 300);
     },
 
     __onResize: function() { this.__updateEditorHeight(); },
@@ -709,6 +747,8 @@ qx.Class.define("myapp.CKEditor",
     // Method to set data into the editor
     setContent: function(data) 
     {
+      console.log("setting editor content: " + data);
+      console.log("this.__editor" + this.__editor);
       if (this.__editor) 
         this.__editor.setData(data);
       else 
@@ -736,16 +776,16 @@ qx.Class.define("myapp.CKEditorWindow",
     this.center();
 
     this.parent = parent;
-    // Add the CKEditor to the window
-    this.ckEditor = new myapp.CKEditor();
+    console.log("new editor with content " + content);
+    // Add the CKEditor to the window and set content after the editor is actually created
+    const ckEditor = new myapp.CKEditor(function () { console.log("set dat shiite"); ckEditor.setContent(content); });
+    this.ckEditor = ckEditor;
     this.add(this.ckEditor);
 
     // Enable focus for the window
     this.setModal(true);
     this.setAllowClose(true);
     this.setAllowMinimize(false);
-
-    this.ckEditor.setContent(content);
 
     let toolbar = new qx.ui.toolbar.ToolBar();
     let okButton = new qx.ui.toolbar.Button("OK");
@@ -767,6 +807,7 @@ qx.Class.define("myapp.CKEditorWindow",
     __onOK: function() 
     {
       let content = this.ckEditor.getContent();
+      console.log("onOK setting content: " + content);
       this.parent.setContent(content);
       this.close();
     },
