@@ -1,5 +1,6 @@
 function log(str) { console.log(str); }
 
+
 /**
  * This is the main application class of "myapp"
  *
@@ -18,6 +19,7 @@ qx.Class.define("myapp.Application",
     __solNum: 0,
     __sol: null,
     __commsDelay: 0,
+    startDate: null,
 
     /** @lint ignoreDeprecated(alert)
      */
@@ -34,40 +36,9 @@ qx.Class.define("myapp.Application",
         qx.log.appender.Console;
       }
 
-      this.__commsDelay = this._recvCommsDelay();
-
-/*      // Define custom decorators
-      qx.theme.manager.Decoration.getInstance().setTheme(qx.theme.Simple);
-      qx.Class.define("custom.Decoration",
-        {
-          extend: qx.core.Object,
-          statics: {
-            register: function () {
-              let manager = qx.theme.manager.Decoration.getInstance();
-              manager.add({
-                loginButton: {
-                  style: {
-                    width: 1,
-                    color: "red",
-                    backgroundColor: "#ffcccc",
-                    radius: 3
-                  }
-                },
-                loggedInButton: {
-                  style: {
-                    width: 1,
-                    color: "blue",
-                    backgroundColor: "#ccccff",
-                    radius: 3
-                  }
-                }
-              });
-            }
-          }
-        });
-
-      custom.Decoration.register();
-*/
+      this.__commsDelay = await this._recvCommsDelay();
+      this.startDate    = new Date(await this._recvStartDate());
+      console.log("commsDelay=" + this.__commsDelay + ", startDate=" + this.startDate);
 
       // Create the main layout
       let doc = this.getRoot();
@@ -80,7 +51,7 @@ qx.Class.define("myapp.Application",
       topPanel.setDecorator("main");
       mainContainer.add(topPanel);
 
-      let numberLabel = new qx.ui.basic.Label("Choose a number, foo 05:");
+      let numberLabel = new qx.ui.basic.Label("Sol");
       numberLabel.setTextColor("blue");
       topPanel.add(numberLabel);
 
@@ -91,41 +62,22 @@ qx.Class.define("myapp.Application",
         const solNum = event.getData(); // proper event is not available inside the setTimeout callback
 
         if (this.__timerId) { clearTimeout(this.__timerId); } // Clear any existing timer       
-        this.__timerId = setTimeout(async function() 
-        { // Set a new timer to execute after 500ms
-          that._changeSol(that, solNum);
-          /*
-          console.log("time THIS: " + solNum);
-          that.__solNum = solNum;
-          console.log("Sol set to " + that.__solNum);
-          const sol = await that._recvSol(solNum);
-          console.log(sol); 
-          that.__sol = sol;
-          that._syncDisplay();
-          */
-        }, 700);
+        this.__timerId = setTimeout(async function() { that._changeSol(that, solNum); }, 700);
       }, this);
       topPanel.add(numberInput);
 
-      let addButton = new qx.ui.form.Button("Add to Chat");
-      addButton.addListener("execute", () => this._addContent(chatPanel, numberInput));
-      topPanel.add(addButton);
+      //let addButton = new qx.ui.form.Button("Add to Chat");
+      //addButton.addListener("execute", () => this._addContent(chatPanel, numberInput));
+      //topPanel.add(addButton);
       
       // Login/Logout Button
       this.__loginButton = new qx.ui.form.Button("Login");
       this.__loginButton.addListenerOnce ( "appear", function ( )  
-        { this.setBGColor (this.__loginButton, "#ffcccc"); }, this);
-
-      //this.setBGColor(this.__loginButton, "#ffcccc", '#ffcccc');
-      //this.__loginButton.setBackgroundColor("#ffcccc");
-      //this.__loginButton.setDecorator("loginButton");
+        { setBGColor(this.__loginButton, "#ffcccc"); }, this);
       this.__loginButton.addListener("execute", () => this._handleLoginLogout());
       topPanel.add(new qx.ui.core.Spacer(), { flex: 1 });
       topPanel.add(this.__loginButton);
       
-      //var btnLogin = this._createBtn("Facture", "#AAAAFF70", 100, function ( ) { alert("FACTURE!"); }, this);
-      //topPanel.add(btnLogin);
-
       // Container for the middle section
       let middleContainer = new qx.ui.container.Composite(new qx.ui.layout.HBox());
       middleContainer.setDecorator("main");
@@ -172,15 +124,41 @@ qx.Class.define("myapp.Application",
       });
       this.__reportUIs = reportUIs;
 
-      //let quillEditor = new myapp.QuillEditor();
-      //rightPanel.add(quillEditor, { edge: 0 });
-
       await this._attemptLogin("matts", "yo"); //TODO: remove autologin before release
       await this._changeSol(this, 0);
-
+      this.checkTransmissions();
     },
 
     sleep(ms) { return new Promise((resolve) => { setTimeout(resolve, ms); }); },
+
+    checkTransmissions()
+    {
+      console.log("checkTrans");
+      const that = this;
+      function checkEt()
+      {
+        console.log("check et out");
+        const reportUIs = that.__reportUIs;
+        for (let i = 0; i < reportUIs.length; i++)
+          reportUIs[i].checkTransmission();
+        setTimeout(checkEt, 20*1000);
+      }
+      checkEt();
+    },
+
+    checkTransmissions0()
+    {
+      const reportUIs = that.__reportUIs;
+      for (let i = 0; i < reportUIs.length; i++)
+        reportUIs[i].checkTransmission();
+      setTimeout(this.checkTransmissions, 20*1000);
+    },
+
+    commsDelayPassed(sentTime)
+    {
+      const now = new Date();
+      return (now - sentTime) * 1000 >= this.__commsDelay;
+    },
 
     _getReportUIbyName(name)
     {
@@ -205,6 +183,18 @@ qx.Class.define("myapp.Application",
         }
       }
     },
+
+    daysBetween(date1, date2) 
+    {
+      if (!(date1 instanceof Date) || !(date2 instanceof Date)) { throw new Error("Both arguments must be valid Date objects"); }
+      const timeDifference = Math.abs(date2 - date1); // Get the time difference in milliseconds
+      const millisecondsPerDay = 1000 * 60 * 60 * 24;
+      const daysDifference = Math.floor(timeDifference / millisecondsPerDay);
+      return daysDifference;
+    },
+
+    getCurrentSolNum() { return this.daysBetween(this.startDate, new Date()); },
+    getUiSolNum() { return this.__solNum; },
 
     async _changeSol(that, solNum) 
     { 
@@ -324,6 +314,8 @@ qx.Class.define("myapp.Application",
 
     async _recvCommsDelay()   { return (await this._doGET('comms-delay')).commsDelay; },
 
+    async _recvStartDate()   { return (await this._doGET('start-date')).startDate; },
+
     async _transmitMessage0(message)
     {
       const data = 
@@ -338,7 +330,6 @@ qx.Class.define("myapp.Application",
         const response = await fetch('http://localhost:8081/ims', 
         {
             method: 'POST',
-            //mode: 'no-cors', // this fixes CORS problems but introduces other problems -- DON'T USE
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(data)
         });
@@ -452,26 +443,12 @@ qx.Class.define("myapp.Application",
         this.__token = result.token;
         this.__loginButton.setLabel(username);
         //this.__loginButton.setBackgroundColor("#ccccff");
-        this.setBGColor ( this.__loginButton, "#ccccff" );
+        setBGColor ( this.__loginButton, "#ccccff" );
         if (loginDialog) loginDialog.close();
       } else {
         alert("Invalid username or password");
       }
 
-      /*
-      // Simulate a REST API call
-      setTimeout(() => {
-        if (username === "user" && password === "password") {
-          this.__isLoggedIn = true;
-          this.__username = username;
-          this.__loginButton.setLabel(username);
-          this.__loginButton.setBackgroundColor("#ccccff");
-          loginDialog.close();
-        } else {
-          alert("Invalid username or password");
-        }
-      }, 1000);
-      */
     },
 
     _logout() 
@@ -482,67 +459,28 @@ qx.Class.define("myapp.Application",
       this.__loginButton.setBackgroundColor("#ffcccc");
       // Add any additional logout logic here
     },
-
-    _createBtn : function ( txt, clr, width, cb, ctx )  {
-      var btn = new qx.ui.form.Button ( "<b style='color: white'>" + txt + "</b>" );
-      btn.set ( { width: width, cursor: 'pointer' } );
-      let lbl = btn.getChildControl ( "label" );
-      lbl.setRich ( true );
-      btn.addListenerOnce ( "appear", function ( )  {
-        this.setBGColor ( btn, "#AAAAAA00", "#AAAAAA00" );
-      },this );
-      btn.addListener ( "mouseover", function ( )  {
-        this.setBGColor ( btn, clr, clr );
-      },this );
-      btn.addListener ( "mouseout", function ( )  {
-        this.setBGColor ( btn, "#AAAAAA00", "#AAAAAA00" );
-      },this );
-      btn.addListener ( "execute", function ( e )  {
-         cb.call ( this );
-      }, ctx );
-      return btn;
-    },
-    setBGColor : function ( btn, clr1, clr2 ) {
-       var elem = btn.getContentElement ( );
-       var dom  = elem.getDomElement ( );
-       if (!clr2) clr2 = clr1;
-       var img  = "linear-gradient(" + clr1 + " 35%, " + clr2 + " 100%)";
-       if ( dom.style.setProperty )
-            dom.style.setProperty ( "background-image", img, null );
-       else
-            dom.style.setAttribute ( "backgroundImage", img );
-    },
-
-      /*
-      -------------------------------------------------------------------------
-        Below is your actual application code...
-      -------------------------------------------------------------------------
-      
-
-      // Create a button
-      const button1 = new qx.ui.form.Button("Click me", "myapp/test.png");
-
-      // Document is the application root
-      const doc = this.getRoot();
-
-      // Add button to document at fixed coordinates
-      doc.add(button1, {left: 100, top: 50});
-
-      // Add an event listener
-      button1.addListener("execute", function() {
-        // eslint no-alert: "off"
-        alert("Hello World!");
-      });
-      */
   }
-    
 });
 
 function commsDelayPassed(sentTime, commsDelay)
 {
+  if (!(sentTime instanceof Date)) sentTime = new Date(sentTime);
   const now = new Date();
   return (now - sentTime) * 1000 >= commsDelay;
 }
+
+function setBGColor(btn, clr1, clr2) 
+{
+   var elem = btn.getContentElement();
+   var dom  = elem.getDomElement();
+   if (!clr2) clr2 = clr1;
+   var img  = "linear-gradient(" + clr1 + " 35%, " + clr2 + " 100%)";
+   if (dom.style.setProperty)
+       dom.style.setProperty ("background-image", img, null);
+   else
+       dom.style.setAttribute ("backgroundImage", img);
+}
+
 
 qx.Class.define("myapp.ReportUI", 
 { extend: qx.core.Object, 
@@ -641,8 +579,9 @@ qx.Class.define("myapp.ReportUI",
     computeState()
     {
       console.log("compute THIS: " + JSON.stringify(this.report));
+      if (this.report.transmitted) console.log("transmitted..." + commsDelayPassed(this.report.xmitTime, this.commsDelay));
       if (this.report.transmitted) 
-        if ( commsDelayPassed(this.report.xmitTime, this.commsDelay) ) return "Received";
+        if (commsDelayPassed(this.report.xmitTime, this.commsDelay)) return "Received";
         else return "Transmitted";
 
       if (this.report.content) return "Populated";
@@ -651,11 +590,17 @@ qx.Class.define("myapp.ReportUI",
 
     realizeState(forcedState)
     {
+      const isCurrentSol = this.network.getCurrentSolNum() === this.network.getUiSolNum();
       this.state = forcedState ? forcedState : this.computeState();
-      console.log("realizing new state: " + this.state);
-      if (this.fsButton) this.fsButton.setEnabled(this.state !== "Unused");
-      if (this.editButton) this.editButton.setEnabled(this.state !== "Unused");
-      if (this.txButton) this.txButton.setEnabled(this.state !== "Unused" && this.state !== "Empty");
+      console.log("realizing new state: " + this.state + ", isCurrentSol=" + isCurrentSol);
+      const editEnabled = this.state !== "Unused" && isCurrentSol;
+      const editBgColor = editEnabled ? "#ccccff" : "#cccccc";
+      const txEnabled = editEnabled && this.state !== "Empty";
+      const txBgColor = txEnabled ? "#ccccff" : "#cccccc";
+      if (this.fsButton)   {   this.fsButton.setEnabled(editEnabled); setBGColor(this.fsButton, editBgColor); }
+      if (this.editButton) { this.editButton.setEnabled(editEnabled); setBGColor(this.editButton, editBgColor); }
+      if (this.txButton)   {   this.txButton.setEnabled(txEnabled);   setBGColor(this.txButton, txBgColor); }
+
       let color;
       if      (this.state === "Unused")      color = "gray";
       else if (this.state === "Empty")       color = "orange";
@@ -678,6 +623,16 @@ qx.Class.define("myapp.ReportUI",
       console.log("setting model content: " + content);
       this.report.content = content;
       this.onChange();
+    },
+
+    checkTransmission()
+    {
+      if (this.state === "Transmitted") console.log(commsDelayPassed(this.report.xmitTime, this.commsDelay));
+      if (this.state === "Transmitted" && commsDelayPassed(this.report.xmitTime, this.commsDelay)) 
+      {
+        console.log("comms delay has passed for " + this.name)
+        this.realizeState("Received");
+      }
     }
   }
 });
@@ -816,3 +771,26 @@ qx.Class.define("myapp.CKEditorWindow",
   }
 
 });
+
+
+/*
+_createBtn : function ( txt, clr, width, cb, ctx )  {
+  var btn = new qx.ui.form.Button ( "<b style='color: white'>" + txt + "</b>" );
+  btn.set ( { width: width, cursor: 'pointer' } );
+  let lbl = btn.getChildControl ( "label" );
+  lbl.setRich ( true );
+  btn.addListenerOnce ( "appear", function ( )  {
+    this.setBGColor ( btn, "#AAAAAA00", "#AAAAAA00" );
+  },this );
+  btn.addListener ( "mouseover", function ( )  {
+    this.setBGColor ( btn, clr, clr );
+  },this );
+  btn.addListener ( "mouseout", function ( )  {
+    this.setBGColor ( btn, "#AAAAAA00", "#AAAAAA00" );
+  },this );
+  btn.addListener ( "execute", function ( e )  {
+     cb.call ( this );
+  }, ctx );
+  return btn;
+},
+*/
