@@ -27,6 +27,8 @@ qx.Class.define("myapp.Application",
     __sol: null,
     __commsDelay: 0,
     startDate: null,
+    reportUIs: null,
+    chatUI: null,
 
     /** @lint ignoreDeprecated(alert)
      */
@@ -92,7 +94,9 @@ qx.Class.define("myapp.Application",
       middleContainer.setDecorator("main");
       mainContainer.add(middleContainer, { flex: 1 });
 
-      // Chat panel container
+      this.chatUI = new myapp.ChatUI(middleContainer, this.__commsDelay, this);
+
+/*      // Chat panel container
       let chatContainer = new qx.ui.container.Composite(new qx.ui.layout.VBox());
       chatContainer.setDecorator("main");
       chatContainer.setWidth(400);
@@ -125,7 +129,7 @@ qx.Class.define("myapp.Application",
       let sendButton = new qx.ui.form.Button("Send");
       sendButton.addListener("execute", () => this._doMessage(chatPanel, chatInput));
       chatInputContainer.add(sendButton);
-
+*/
       // Right panel
       let rightPanel = new qx.ui.container.Composite(new qx.ui.layout.VBox(10));
       rightPanel.setPadding(10);
@@ -189,10 +193,14 @@ qx.Class.define("myapp.Application",
 
     _syncDisplay() 
     { 
+      const sol = this.__sol;
+
+      this.chatUI.reset();
+      this.chatUI.update(sol.ims);
+
       const reportUIs = this.__reportUIs;
       for (let i = 0; i < reportUIs.length; i++)
         reportUIs[i].reset();
-      const sol = this.__sol;
       for (let i = 0; i < sol.reports.length; i++)
       {
         const reportUI = this._getReportUIbyName(sol.reports[i].name);
@@ -500,6 +508,112 @@ function setBGColor(btn, clr1, clr2)
        dom.style.setAttribute ("backgroundImage", img);
 }
 
+//////////////////////////////////////////////////////////////////////////////////////////////////
+
+qx.Class.define("myapp.ChatUI", 
+{ extend: qx.core.Object, 
+  construct: function(parentContainer, commsDelay, network) 
+  {
+    const that = this;
+    this.commsDelay = commsDelay;
+    this.network = network;
+
+    let chatContainer = new qx.ui.container.Composite(new qx.ui.layout.VBox());
+    chatContainer.setDecorator("main");
+    chatContainer.setWidth(400);
+    parentContainer.add(chatContainer, { flex: 2 });
+
+    let chatPanel = new qx.ui.container.Composite(new qx.ui.layout.VBox());
+    this.chatPanel = chatPanel;
+    chatPanel.setDecorator("main");
+    chatContainer.add(chatPanel, { flex: 2 });
+    //let chatScroll = new qx.ui.container.Scroll().add(chatPanel);
+    //chatContainer.add(chatScroll, { flex: 1 });
+
+    let chatInputContainer = new qx.ui.container.Composite(new qx.ui.layout.HBox(10));
+    chatInputContainer.setPadding(10);
+    chatContainer.add(chatInputContainer);
+  
+    let chatInput = new qx.ui.form.TextField();
+    this.chatInput = chatInput;
+    chatInput.setPlaceholder("Type a message...");
+    chatInput.addListener("keypress", function(e) 
+      { if (e.getKeyIdentifier() === "Enter") { that._doMessage(chatPanel, chatInput); } } );
+    chatInputContainer.add(chatInput, { flex: 1 });
+
+    let sendButton = new qx.ui.form.Button("Send");
+    sendButton.addListener("execute", () => this._doMessage(chatPanel, chatInput));
+    chatInputContainer.add(sendButton);
+  },
+
+  members: 
+  {
+    chatPanel: null,
+
+    reset() { this.chatPanel.removeAll() },
+
+    update(ims)
+    {
+      console.log("update dat chat wit " + ims.length + " ims");
+      this.ims = ims;
+      this.realizeState();
+    },
+
+    realizeState()
+    {
+      const isCurrentSol = this.network.getCurrentSolNum() === this.network.getUiSolNum();
+      this.chatInput.setEnabled(isCurrentSol);
+      const ims = this.ims;
+      for (let i = 0; i < ims.length; i++)
+        this.addIM(ims[i].content);
+    },
+
+    addIM(str)
+    {
+      console.log("add: " + str);
+      const im = new qx.ui.basic.Label().set( { value: str, rich: true });
+      this.chatPanel.add(im);  
+    },
+
+    _doMessage(chatPanel, chatInput) 
+    {
+      let message = chatInput.getValue().trim();
+      if (!message) 
+      {
+        alert("Please enter a message.");
+        return;
+      }
+
+      // Simple markdown and emoticon parsing
+      let formattedMessage = this._parseMessage(message);
+      let newMessage = new qx.ui.basic.Label().set(
+      {
+        value: formattedMessage,
+        rich: true
+      });
+      chatPanel.add(newMessage);
+      chatInput.setValue("");
+      this.network._sendMessage(formattedMessage);
+    },
+
+    _parseMessage(message) 
+    {
+      // Replace basic emoticons
+      message = message.replace(/:\)/g, '😊');
+      message = message.replace(/:\(/g, '😞');
+
+      // Replace markdown formatting
+      message = message.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+      message = message.replace(/__(.*?)__/g, '<em>$1</em>');
+      message = message.replace(/`(.*?)`/g, '<code>$1</code>');
+
+      return message;
+    }
+
+  }
+
+});
+
 
 qx.Class.define("myapp.ReportUI", 
 { extend: qx.core.Object, 
@@ -659,6 +773,8 @@ qx.Class.define("myapp.ReportUI",
 });
 
 
+//////////////////////////////////////////////////////////////////////////////////////////////////
+
 
 qx.Class.define("myapp.CKEditor", 
 { extend: qx.ui.core.Widget,
@@ -793,6 +909,7 @@ qx.Class.define("myapp.CKEditorWindow",
 
 });
 
+//////////////////////////////////////////////////////////////////////////////////////////////////
 
 qx.Class.define("myapp.CircularProgress", {
   extend: qx.ui.core.Widget,
