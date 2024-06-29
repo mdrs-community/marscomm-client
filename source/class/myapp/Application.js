@@ -1,5 +1,12 @@
 function log(str) { console.log(str); }
 
+function makeLabel(str, color, fontSize)
+{
+  let label = new qx.ui.basic.Label(str);
+  label.setTextColor(color);
+  label.setFont(new qx.bom.Font(fontSize, ["Arial"]));
+  return label;
+}
 
 /**
  * This is the main application class of "myapp"
@@ -51,9 +58,11 @@ qx.Class.define("myapp.Application",
       topPanel.setDecorator("main");
       mainContainer.add(topPanel);
 
-      let numberLabel = new qx.ui.basic.Label("Sol");
-      numberLabel.setTextColor("blue");
-      topPanel.add(numberLabel);
+      const mcLabel = makeLabel("MarsComm", "blue", 24);
+      topPanel.add(mcLabel);      
+      topPanel.add(new qx.ui.core.Spacer(), { flex: 1 });
+      let solNumLabel = makeLabel("Sol", "blue", 24);
+      topPanel.add(solNumLabel);
 
       let numberInput = new qx.ui.form.Spinner();
       numberInput.addListener("changeValue", async function(event) 
@@ -100,12 +109,21 @@ qx.Class.define("myapp.Application",
       chatInputContainer.setPadding(10);
       chatContainer.add(chatInputContainer);
    
+      const that = this;
       let chatInput = new qx.ui.form.TextField();
       chatInput.setPlaceholder("Type a message...");
+      chatInput.addListener("keypress", function(e) {
+        // Check if the Enter key (key code 13) was pressed
+        if (e.getKeyIdentifier() === "Enter") {
+          //let inputValue = chatInput.getValue();
+          that._doMessage(chatPanel, chatInput);
+          //alert("You pressed Enter! The value is: " + inputValue);
+        }
+      });
       chatInputContainer.add(chatInput, { flex: 1 });
 
       let sendButton = new qx.ui.form.Button("Send");
-      sendButton.addListener("execute", () => this._sendMessage(chatPanel, chatInput));
+      sendButton.addListener("execute", () => this._doMessage(chatPanel, chatInput));
       chatInputContainer.add(sendButton);
 
       // Right panel
@@ -127,6 +145,7 @@ qx.Class.define("myapp.Application",
       await this._attemptLogin("matts", "yo"); //TODO: remove autologin before release
       await this._changeSol(this, 0);
       this.checkTransmissions();
+
     },
 
     sleep(ms) { return new Promise((resolve) => { setTimeout(resolve, ms); }); },
@@ -350,7 +369,7 @@ qx.Class.define("myapp.Application",
       }
     },
 
-    _sendMessage(chatPanel, chatInput) 
+    _doMessage(chatPanel, chatInput) 
     {
       let message = chatInput.getValue().trim();
       if (!message) {
@@ -534,12 +553,14 @@ qx.Class.define("myapp.ReportUI",
       that.report.xmitTime = new Date();
       that.network._transmitReport(that.report); // tell server to send report to Earth
       that.realizeState("Transmitted"); 
-    } );
+      startXmitProgressDisplay(commsDelay, container);
+    });
     txButton.setEnabled(false);
     container.add(txButton);
     this.txButton = txButton;
 
-    let label = new qx.ui.basic.Label(name);
+    const label = makeLabel(name, "gray", 18);
+    //let label = new qx.ui.basic.Label(name);
     container.add(label);
     this.label = label;
   },
@@ -771,6 +792,103 @@ qx.Class.define("myapp.CKEditorWindow",
   }
 
 });
+
+
+qx.Class.define("myapp.CircularProgress", {
+  extend: qx.ui.core.Widget,
+
+  construct: function() {
+    this.base(arguments);
+    this._setLayout(new qx.ui.layout.Canvas());
+    this.__progress = 0;
+
+    // Add a listener to update the progress when the widget appears
+    this.addListenerOnce("appear", this._draw, this);
+  },
+
+  properties: {
+    progress: {
+      check: "Number",
+      init: 0,
+      apply: "_applyProgress"
+    }
+  },
+
+  members: {
+    __progress: null,
+
+    _createContentElement: function() {
+      let canvas = new qx.html.Element("canvas");
+      return canvas;
+    },
+
+    _applyProgress: function(value) {
+      this.__progress = value;
+      this._draw();
+    },
+
+    _draw: function() {
+      let canvas = this.getContentElement().getDomElement();
+      let context = canvas.getContext("2d");
+
+      let width = this.getWidth();
+      let height = this.getHeight();
+      let radius = Math.min(width, height) / 2;
+
+      // Ensure the canvas is the correct size
+      canvas.width = width;
+      canvas.height = height;
+
+      context.clearRect(0, 0, width, height);
+
+      // Draw the background circle
+      context.beginPath();
+      context.arc(width / 2, height / 2, radius, 0, 2 * Math.PI);
+      context.fillStyle = "#e6e6e6";
+      context.fill();
+
+      // Draw the progress circle
+      context.beginPath();
+      context.moveTo(width / 2, height / 2);
+      context.arc(
+        width / 2,
+        height / 2,
+        radius,
+        -Math.PI / 2,
+        -Math.PI / 2 + 2 * Math.PI * this.__progress,
+        false
+      );
+      context.closePath();
+      context.fillStyle = "#4caf50";
+      context.fill();
+    }
+  }
+});
+
+function startXmitProgressDisplay(commsDelay, parentContainer)
+{
+  // Create the circular progress widget
+  let circularProgress = new myapp.CircularProgress();
+  circularProgress.setWidth(30);
+  circularProgress.setHeight(30);
+  parentContainer.add(circularProgress);
+
+  // do progress updates
+  const totalUpdates = 100;
+  let progress = 0;
+  let timer = new qx.event.Timer(commsDelay * 1000 / totalUpdates); // update every 1/100 of the commsDelay
+  timer.addListener("interval", function() 
+  {
+    progress += 1/totalUpdates;
+    if (progress > 1) 
+    {
+      timer.stop();
+      parentContainer.remove(circularProgress);
+    }
+    circularProgress.setProgress(progress);
+  });
+  timer.start();      
+}
 
 
 /*
