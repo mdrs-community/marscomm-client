@@ -1,12 +1,51 @@
+/*TODO
+  transmit animations for chat messages
+  //report Edit button becomes View on non-current sol
+  report bundle download (zip file?)
+  add button to copy report to clipbored
+*/
+
 function log(str) { console.log(str); }
 
-function makeLabel(str, color, fontSize)
+function commsDelayPassed(sentTime, commsDelay)
+{
+  if (!(sentTime instanceof Date)) sentTime = new Date(sentTime);
+  const now = new Date();
+  return (now - sentTime) * 1000 >= commsDelay;
+}
+
+function setBGColor(btn, clr1, clr2) 
+{
+   var elem = btn.getContentElement();
+   var dom  = elem.getDomElement();
+   if (!clr2) clr2 = clr1;
+   var img  = "linear-gradient(" + clr1 + " 35%, " + clr2 + " 100%)";
+   if (dom.style.setProperty)
+       dom.style.setProperty ("background-image", img, null);
+   else
+       dom.style.setAttribute ("backgroundImage", img);
+}
+
+function makeButton(container, str, onExecute, color, fontSize, image)
+{
+  if (!fontSize) fontSize = 14;
+  if (!color) color = "gray";
+  const button = str ? new qx.ui.form.Button(str) : new qx.ui.form.Button(null, image);
+  if (str) button.addListenerOnce("appear", function () { setBGColor(button, color); }, this);
+  button.addListener("execute", onExecute);
+  container.add(button);
+  return button;
+}
+
+function makeLabel(container, str, color, fontSize)
 {
   let label = new qx.ui.basic.Label(str);
   label.setTextColor(color);
   label.setFont(new qx.bom.Font(fontSize, ["Arial"]));
+  container.add(label);
   return label;
 }
+
 
 /**
  * This is the main application class of "myapp"
@@ -54,17 +93,16 @@ qx.Class.define("myapp.Application",
       let mainContainer = new qx.ui.container.Composite(new qx.ui.layout.VBox());
       doc.add(mainContainer, { edge: 0 });
 
-      // Top panel
       let topPanel = new qx.ui.container.Composite(new qx.ui.layout.HBox(10));
       topPanel.setPadding(10);
       topPanel.setDecorator("main");
       mainContainer.add(topPanel);
 
-      const mcLabel = makeLabel("MarsComm", "blue", 24);
-      topPanel.add(mcLabel);      
+      const mcLabel = makeLabel(topPanel, "MarsComm", "blue", 24);
+      //topPanel.add(mcLabel);      
       topPanel.add(new qx.ui.core.Spacer(), { flex: 1 });
-      let solNumLabel = makeLabel("Sol", "blue", 24);
-      topPanel.add(solNumLabel);
+      let solNumLabel = makeLabel(topPanel, "Sol", "blue", 24);
+      //topPanel.add(solNumLabel);
 
       let numberInput = new qx.ui.form.Spinner();
       numberInput.addListener("changeValue", async function(event) 
@@ -80,15 +118,15 @@ qx.Class.define("myapp.Application",
       //let addButton = new qx.ui.form.Button("Add to Chat");
       //addButton.addListener("execute", () => this._addContent(chatPanel, numberInput));
       //topPanel.add(addButton);
-      
-      // Login/Logout Button
-      this.__loginButton = new qx.ui.form.Button("Login");
+
+      topPanel.add(new qx.ui.core.Spacer(), { flex: 1 });
+      this.__loginButton = makeButton(topPanel, "Login", () => this._handleLoginLogout(), "#ffcccc", 16);
+/*      this.__loginButton = new qx.ui.form.Button("Login");
       this.__loginButton.addListenerOnce ( "appear", function ( )  
         { setBGColor(this.__loginButton, "#ffcccc"); }, this);
       this.__loginButton.addListener("execute", () => this._handleLoginLogout());
-      topPanel.add(new qx.ui.core.Spacer(), { flex: 1 });
       topPanel.add(this.__loginButton);
-      
+*/      
       // Container for the middle section
       let middleContainer = new qx.ui.container.Composite(new qx.ui.layout.HBox());
       middleContainer.setDecorator("main");
@@ -489,24 +527,7 @@ qx.Class.define("myapp.Application",
   }
 });
 
-function commsDelayPassed(sentTime, commsDelay)
-{
-  if (!(sentTime instanceof Date)) sentTime = new Date(sentTime);
-  const now = new Date();
-  return (now - sentTime) * 1000 >= commsDelay;
-}
 
-function setBGColor(btn, clr1, clr2) 
-{
-   var elem = btn.getContentElement();
-   var dom  = elem.getDomElement();
-   if (!clr2) clr2 = clr1;
-   var img  = "linear-gradient(" + clr1 + " 35%, " + clr2 + " 100%)";
-   if (dom.style.setProperty)
-       dom.style.setProperty ("background-image", img, null);
-   else
-       dom.style.setAttribute ("backgroundImage", img);
-}
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -541,9 +562,10 @@ qx.Class.define("myapp.ChatUI",
       { if (e.getKeyIdentifier() === "Enter") { that._doMessage(chatPanel, chatInput); } } );
     chatInputContainer.add(chatInput, { flex: 1 });
 
-    let sendButton = new qx.ui.form.Button("Send");
-    sendButton.addListener("execute", () => this._doMessage(chatPanel, chatInput));
-    chatInputContainer.add(sendButton);
+    makeButton(chatInputContainer, "Send", () => this._doMessage(chatPanel, chatInput), "#ccccff", 14);
+    //let sendButton = new qx.ui.form.Button("Send");
+    //sendButton.addListener("execute", () => this._doMessage(chatPanel, chatInput));
+    //chatInputContainer.add(sendButton);
   },
 
   members: 
@@ -655,28 +677,44 @@ qx.Class.define("myapp.ReportUI",
     //fsb.setEnabled(false); // disabling the FileSelectorButton somehow prevents it working properly even after it's re-enabled -- FARUK
     this.fsButton = fsb;
 
-    let editButton = new qx.ui.form.Button("Edit");
-    editButton.addListener("execute", function () { that.openReportEditor(); } );
-    container.add(editButton);
-    this.editButton = editButton;
+
+    //const cimage = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAMAAAAoLQ9TAAAAVFBMVEUAAAAAAAClpaUjIyP09PTf39+6urpCQkI8PDxSUlKUlJQYGBhHR0dLS0soKCgsLCzz8/PY2NisrKzW1tZgYGDGxsY7OzsZGRkRERELCwtVVVV6enp7e3vX19c//nxDAAAAAXRSTlMAQObYZgAAAAFiS0dEDf3t0zQAAAAJcEhZcwAADsIAAA7CARUoSoAAAAA6SURBVBjTY2AAgRlABQAFCwwAzYAkMEAkBC0JqAViGgyFQnpgJVhcgItGKFhDKTFgMQpDiYQA4W1QSAAAOcEBViOVOwQAAAABJRU5ErkJggg==";
+    const cimage = "myapp/copyIcon.png";
+    const pimage = "myapp/pasteIcon.png";
+    //const cimage = "myapp/test.png";
+    //const pimage = "myapp/test.png";
+    this.copyButton = makeButton(container, null, () => navigator.clipboard.writeText(that.report.content), "#ccccff", 14, cimage);
+    this.pasteButton = makeButton(container, null, () => that.setContentFromBored(), "gray", 14, pimage);
+
+    this.editButton = makeButton(container, "Edit", () => that.openReportEditor(), "gray", 14);
+    //let editButton = new qx.ui.form.Button("Edit");
+    //editButton.addListener("execute", function () { that.openReportEditor(); } );
+    //container.add(editButton);
+    //this.editButton = editButton;
     
-    let txButton = new qx.ui.form.Button("Transmit");
-    txButton.addListener("execute", function () 
+    //let text = await navigator.clipboard.readText();
+
+    function onXmit()
     { 
       that.report.transmitted = true;
       that.report.xmitTime = new Date();
       that.network._transmitReport(that.report); // tell server to send report to Earth
       that.realizeState("Transmitted"); 
       startXmitProgressDisplay(commsDelay, container);
-    });
-    txButton.setEnabled(false);
-    container.add(txButton);
-    this.txButton = txButton;
+    }
+    this.txButton = makeButton(container, "Transmit", onXmit, "gray", 14);
+    this.txButton.setEnabled(false);
 
-    const label = makeLabel(name, "gray", 18);
+    //let txButton = new qx.ui.form.Button("Transmit");
+    //txButton.addListener("execute", onXmit);
+    //txButton.setEnabled(false);
+    //container.add(txButton);
+    //this.txButton = txButton;
+
+    this.label = makeLabel(container, name, "gray", 18);
     //let label = new qx.ui.basic.Label(name);
-    container.add(label);
-    this.label = label;
+    //container.add(label);
+    //this.label = label;
   },
   
   members: 
@@ -736,6 +774,9 @@ qx.Class.define("myapp.ReportUI",
       if (this.editButton) { this.editButton.setEnabled(editEnabled); setBGColor(this.editButton, editBgColor); }
       if (this.txButton)   {   this.txButton.setEnabled(txEnabled);   setBGColor(this.txButton, txBgColor); }
 
+      const editStr = isCurrentSol ? "Edit" : "View";
+      this.editButton.setLabel(editStr);
+
       let color;
       if      (this.state === "Unused")      color = "gray";
       else if (this.state === "Empty")       color = "orange";
@@ -759,6 +800,8 @@ qx.Class.define("myapp.ReportUI",
       this.report.content = content;
       this.onChange();
     },
+
+    async setContentFromBored() { this.setContent(await navigator.clipboard.readText()); },
 
     checkTransmission()
     {
