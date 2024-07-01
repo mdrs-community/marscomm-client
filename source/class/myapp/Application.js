@@ -2,7 +2,7 @@
   transmit animations for chat messages
   //report Edit button becomes View on non-current sol
   report bundle download (zip file?)
-  add button to copy report to clipbored
+  //add button to copy report to clipbored
 */
 
 function log(str) { console.log(str); }
@@ -11,7 +11,29 @@ function commsDelayPassed(sentTime, commsDelay)
 {
   if (!(sentTime instanceof Date)) sentTime = new Date(sentTime);
   const now = new Date();
-  return (now - sentTime) * 1000 >= commsDelay;
+  //console.log("CDPlease: " + ((now - sentTime) / 1000) + ", commsDelay: " + commsDelay + ", CDP ret: " + ((now - sentTime) / 1000 > commsDelay));
+  return ((now - sentTime) / 1000 > commsDelay);
+}
+
+function timeSinceSent(sentTime)
+{
+  if (!(sentTime instanceof Date)) sentTime = new Date(sentTime);
+  const now = new Date();
+  return (now - sentTime) / 1000;  
+}
+
+function inTransit(obj, commsDelay) 
+{ 
+  const cdp = commsDelayPassed(obj.xmitTime, commsDelay);
+  //console.log("in transit? " + obj.xmitTime.toString() + " vs " + (new Date()).toString() + " CDP " + cdp);
+  return obj.transmitted && !cdp; 
+}
+
+function timeInTransit(obj) 
+{ 
+  const tit = ((new Date()) - obj.xmitTime) / 1000; 
+  //console.log("timeInTransit is " + tit + " seconds");
+  return tit;
 }
 
 function setBGColor(btn, clr1, clr2) 
@@ -45,6 +67,21 @@ function makeLabel(container, str, color, fontSize)
   container.add(label);
   return label;
 }
+
+function newIM(content, user, commsDelay)
+{
+	let that = { };
+
+  that.content = content;
+  that.user = user;
+  that.xmitTime = new Date();
+  that.transmitted = true; // IMs are automatically transmitted
+
+  that.received = function () { return commsDelayPassed(that.xmitTime, commsDelay); }
+  
+  return that;
+}
+
 
 
 /**
@@ -233,8 +270,7 @@ qx.Class.define("myapp.Application",
     { 
       const sol = this.__sol;
 
-      this.chatUI.reset();
-      this.chatUI.update(sol.ims);
+      this.chatUI.changeSol(sol.ims);
 
       const reportUIs = this.__reportUIs;
       for (let i = 0; i < reportUIs.length; i++)
@@ -339,9 +375,9 @@ qx.Class.define("myapp.Application",
       return null;
     },
 
-    async _sendMessage(message)
+    async _sendIM(im)
     {
-      const body = { message: message };
+      const body = { message: im.content };
       this._doPOST('ims', body);
     },
 
@@ -373,7 +409,15 @@ qx.Class.define("myapp.Application",
       this._doPOST('reports/transmit/' + report.name, body);
     },
 
-    async _recvSol(solNum) { return await this._doGET('sols/' + solNum); },
+    async _recvSol(solNum) 
+    { 
+      const sol = await this._doGET('sols/' + solNum);
+      for (let i = 0; i < sol.ims.length; i++)
+        sol.ims[i].xmitTime = new Date(sol.ims[i].xmitTime);
+      for (let i = 0; i < sol.reports.length; i++)
+        sol.reports[i].xmitTime = new Date(sol.reports[i].xmitTime);
+      return sol; 
+    },
 
     async _recvReports()   { return await this._doGET('reports'); },
 
@@ -431,7 +475,7 @@ qx.Class.define("myapp.Application",
       });
       chatPanel.add(newMessage);
       chatInput.setValue("");
-      this._sendMessage(formattedMessage);
+      this._sendIM(formattedMessage);
     },
 
     _parseMessage(message) 
@@ -545,6 +589,7 @@ qx.Class.define("myapp.ChatUI",
     parentContainer.add(chatContainer, { flex: 2 });
 
     let chatPanel = new qx.ui.container.Composite(new qx.ui.layout.VBox());
+    chatPanel.setPadding(10);
     this.chatPanel = chatPanel;
     chatPanel.setDecorator("main");
     chatContainer.add(chatPanel, { flex: 2 });
@@ -559,63 +604,80 @@ qx.Class.define("myapp.ChatUI",
     this.chatInput = chatInput;
     chatInput.setPlaceholder("Type a message...");
     chatInput.addListener("keypress", function(e) 
-      { if (e.getKeyIdentifier() === "Enter") { that._doMessage(chatPanel, chatInput); } } );
+      { if (e.getKeyIdentifier() === "Enter") { that._doMessage(that); } } );
     chatInputContainer.add(chatInput, { flex: 1 });
 
-    makeButton(chatInputContainer, "Send", () => this._doMessage(chatPanel, chatInput), "#ccccff", 14);
+    makeButton(chatInputContainer, "Send", () => this._doMessage(that), "#ccccff", 14);
     //let sendButton = new qx.ui.form.Button("Send");
     //sendButton.addListener("execute", () => this._doMessage(chatPanel, chatInput));
     //chatInputContainer.add(sendButton);
   },
 
+  /* scenarios: 
+  ** SolNum changed (changeSol())
+  **   clear IMs
+  **   populate IMs, starting any animations
+  ** Message submitted (doMessage())
+  **   create new IM
+  **   put IM in window, statting animation
+  **   push IM to server
+  */
+
   members: 
   {
     chatPanel: null,
+    commsDelay: 0,
+    network: null,
 
-    reset() { this.chatPanel.removeAll() },
+    reset() { try { this.chatPanel.removeAll(); } catch (e) { console.log("clean et up"); } this.ims = null; },
 
-    update(ims)
+    changeSol(ims)
     {
-      console.log("update dat chat wit " + ims.length + " ims");
+      console.log("changing Sol; update dat chat wit " + ims.length + " ims");
+      this.reset();
       this.ims = ims;
-      this.realizeState();
-    },
-
-    realizeState()
-    {
       const isCurrentSol = this.network.getCurrentSolNum() === this.network.getUiSolNum();
       this.chatInput.setEnabled(isCurrentSol);
-      const ims = this.ims;
       for (let i = 0; i < ims.length; i++)
-        this.addIM(ims[i].content);
+        this.addIM(ims[i]);
     },
 
-    addIM(str)
+    addIM(im)
     {
-      console.log("add: " + str);
-      const im = new qx.ui.basic.Label().set( { value: str, rich: true });
-      this.chatPanel.add(im);  
+      console.log("addIM: " + im.content);
+      if (!im.content) return;
+      let container = new qx.ui.container.Composite(new qx.ui.layout.HBox(10));
+  
+      const str = '<b>' + im.user + '</b> <font size="-2">' + (new Date()).toString() + ':</font><br>' + im.content + '<br> <br>';
+      const label = new qx.ui.basic.Label().set( { value: str, rich: true });
+      const color = (im.user === this.network.__username) ? "blue" : "black";
+      label.setTextColor(color);
+      label.setFont(new qx.bom.Font(16, ["Arial"]));
+      container.add(label);  
+      //if (inTransit(im)) console.log("  still in transit!")
+      //else console.log("time since sent is " + timeSinceSent(im.xmitTime));
+      if (inTransit(im, this.commsDelay)) startXmitProgressDisplay(this.commsDelay - timeInTransit(im), container, 30);
+      this.chatPanel.add(container);
     },
 
-    _doMessage(chatPanel, chatInput) 
+    _doMessage(that) 
     {
-      let message = chatInput.getValue().trim();
+      let message = that.chatInput.getValue().trim();
+      console.log("doing message: " + message);
       if (!message) 
       {
         alert("Please enter a message.");
         return;
       }
 
+      that.chatInput.setValue("");
       // Simple markdown and emoticon parsing
-      let formattedMessage = this._parseMessage(message);
-      let newMessage = new qx.ui.basic.Label().set(
-      {
-        value: formattedMessage,
-        rich: true
-      });
-      chatPanel.add(newMessage);
-      chatInput.setValue("");
-      this.network._sendMessage(formattedMessage);
+      let formattedMessage = that._parseMessage(message);
+      const im = newIM(formattedMessage, that.network.__username, that.commsDelay);
+      console.log(im);
+      that.addIM(im);           // add IM to chatPanel
+      that.ims.push(im);        // add IM to local model
+      that.network._sendIM(im); // send IM to server
     },
 
     _parseMessage(message) 
@@ -630,7 +692,7 @@ qx.Class.define("myapp.ChatUI",
       message = message.replace(/`(.*?)`/g, '<code>$1</code>');
 
       return message;
-    }
+    },
 
   }
 
@@ -700,7 +762,7 @@ qx.Class.define("myapp.ReportUI",
       that.report.xmitTime = new Date();
       that.network._transmitReport(that.report); // tell server to send report to Earth
       that.realizeState("Transmitted"); 
-      startXmitProgressDisplay(commsDelay, container);
+      startXmitProgressDisplay(commsDelay, container, 25);
     }
     this.txButton = makeButton(container, "Transmit", onXmit, "gray", 14);
     this.txButton.setEnabled(false);
@@ -733,7 +795,7 @@ qx.Class.define("myapp.ReportUI",
     state: "Unused", // ReportUI states: Unused, Empty, Populated, Transmitted, Received
     report: null,
 
-    reset() { console.log("reset"); this.realizeState("Unused"); },
+    reset() { /* console.log("reset"); */ this.realizeState("Unused"); },
 
     onChange() 
     { 
@@ -765,7 +827,7 @@ qx.Class.define("myapp.ReportUI",
     {
       const isCurrentSol = this.network.getCurrentSolNum() === this.network.getUiSolNum();
       this.state = forcedState ? forcedState : this.computeState();
-      console.log("realizing new state: " + this.state + ", isCurrentSol=" + isCurrentSol);
+      //console.log("realizing new state: " + this.state + ", isCurrentSol=" + isCurrentSol);
       const editEnabled = this.state !== "Unused" && isCurrentSol;
       const editBgColor = editEnabled ? "#ccccff" : "#cccccc";
       const txEnabled = editEnabled && this.state !== "Empty";
@@ -1025,18 +1087,19 @@ qx.Class.define("myapp.CircularProgress", {
   }
 });
 
-function startXmitProgressDisplay(commsDelay, parentContainer)
+function startXmitProgressDisplay(commsDelay, parentContainer, size)
 {
+  console.log("starting Xmit display for " + commsDelay);
   // Create the circular progress widget
   let circularProgress = new myapp.CircularProgress();
-  circularProgress.setWidth(30);
-  circularProgress.setHeight(30);
+  circularProgress.setWidth(size);
+  circularProgress.setHeight(size);
   parentContainer.add(circularProgress);
 
   // do progress updates
   const totalUpdates = 100;
   let progress = 0;
-  let timer = new qx.event.Timer(commsDelay * 1000 / totalUpdates); // update every 1/100 of the commsDelay
+  let timer = new qx.event.Timer(Math.round(commsDelay * 1000 / totalUpdates)); // update every 1/100 of the commsDelay
   timer.addListener("interval", function() 
   {
     progress += 1/totalUpdates;
