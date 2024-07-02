@@ -136,10 +136,8 @@ qx.Class.define("myapp.Application",
       mainContainer.add(topPanel);
 
       const mcLabel = makeLabel(topPanel, "MarsComm", "blue", 24);
-      //topPanel.add(mcLabel);      
       topPanel.add(new qx.ui.core.Spacer(), { flex: 1 });
       let solNumLabel = makeLabel(topPanel, "Sol", "blue", 24);
-      //topPanel.add(solNumLabel);
 
       let numberInput = new qx.ui.form.Spinner();
       numberInput.addListener("changeValue", async function(event) 
@@ -152,60 +150,15 @@ qx.Class.define("myapp.Application",
       }, this);
       topPanel.add(numberInput);
 
-      //let addButton = new qx.ui.form.Button("Add to Chat");
-      //addButton.addListener("execute", () => this._addContent(chatPanel, numberInput));
-      //topPanel.add(addButton);
-
       topPanel.add(new qx.ui.core.Spacer(), { flex: 1 });
       this.__loginButton = makeButton(topPanel, "Login", () => this._handleLoginLogout(), "#ffcccc", 16);
-/*      this.__loginButton = new qx.ui.form.Button("Login");
-      this.__loginButton.addListenerOnce ( "appear", function ( )  
-        { setBGColor(this.__loginButton, "#ffcccc"); }, this);
-      this.__loginButton.addListener("execute", () => this._handleLoginLogout());
-      topPanel.add(this.__loginButton);
-*/      
-      // Container for the middle section
+    
       let middleContainer = new qx.ui.container.Composite(new qx.ui.layout.HBox());
       middleContainer.setDecorator("main");
       mainContainer.add(middleContainer, { flex: 1 });
 
       this.chatUI = new myapp.ChatUI(middleContainer, this.__commsDelay, this);
 
-/*      // Chat panel container
-      let chatContainer = new qx.ui.container.Composite(new qx.ui.layout.VBox());
-      chatContainer.setDecorator("main");
-      chatContainer.setWidth(400);
-      middleContainer.add(chatContainer, { flex: 2 });
-
-      let chatPanel = new qx.ui.container.Composite(new qx.ui.layout.VBox());
-      chatPanel.setDecorator("main");
-      chatContainer.add(chatPanel, { flex: 2 });
-      //let chatScroll = new qx.ui.container.Scroll().add(chatPanel);
-      //chatContainer.add(chatScroll, { flex: 1 });
-
-      // Chat input panel
-      let chatInputContainer = new qx.ui.container.Composite(new qx.ui.layout.HBox(10));
-      chatInputContainer.setPadding(10);
-      chatContainer.add(chatInputContainer);
-   
-      const that = this;
-      let chatInput = new qx.ui.form.TextField();
-      chatInput.setPlaceholder("Type a message...");
-      chatInput.addListener("keypress", function(e) {
-        // Check if the Enter key (key code 13) was pressed
-        if (e.getKeyIdentifier() === "Enter") {
-          //let inputValue = chatInput.getValue();
-          that._doMessage(chatPanel, chatInput);
-          //alert("You pressed Enter! The value is: " + inputValue);
-        }
-      });
-      chatInputContainer.add(chatInput, { flex: 1 });
-
-      let sendButton = new qx.ui.form.Button("Send");
-      sendButton.addListener("execute", () => this._doMessage(chatPanel, chatInput));
-      chatInputContainer.add(sendButton);
-*/
-      // Right panel
       let rightPanel = new qx.ui.container.Composite(new qx.ui.layout.VBox(10));
       rightPanel.setPadding(10);
       rightPanel.setDecorator("main");
@@ -608,9 +561,6 @@ qx.Class.define("myapp.ChatUI",
     chatInputContainer.add(chatInput, { flex: 1 });
 
     makeButton(chatInputContainer, "Send", () => this._doMessage(that), "#ccccff", 14);
-    //let sendButton = new qx.ui.form.Button("Send");
-    //sendButton.addListener("execute", () => this._doMessage(chatPanel, chatInput));
-    //chatInputContainer.add(sendButton);
   },
 
   /* scenarios: 
@@ -749,12 +699,6 @@ qx.Class.define("myapp.ReportUI",
     this.pasteButton = makeButton(container, null, () => that.setContentFromBored(), "gray", 14, pimage);
 
     this.editButton = makeButton(container, "Edit", () => that.openReportEditor(), "gray", 14);
-    //let editButton = new qx.ui.form.Button("Edit");
-    //editButton.addListener("execute", function () { that.openReportEditor(); } );
-    //container.add(editButton);
-    //this.editButton = editButton;
-    
-    //let text = await navigator.clipboard.readText();
 
     function onXmit()
     { 
@@ -767,16 +711,7 @@ qx.Class.define("myapp.ReportUI",
     this.txButton = makeButton(container, "Transmit", onXmit, "gray", 14);
     this.txButton.setEnabled(false);
 
-    //let txButton = new qx.ui.form.Button("Transmit");
-    //txButton.addListener("execute", onXmit);
-    //txButton.setEnabled(false);
-    //container.add(txButton);
-    //this.txButton = txButton;
-
     this.label = makeLabel(container, name, "gray", 18);
-    //let label = new qx.ui.basic.Label(name);
-    //container.add(label);
-    //this.label = label;
   },
   
   members: 
