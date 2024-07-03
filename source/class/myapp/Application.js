@@ -5,6 +5,8 @@
   //add button to copy report to clipbored
 */
 
+//const JSZip = require('jszip');
+
 function log(str) { console.log(str); }
 
 function commsDelayPassed(sentTime, commsDelay)
@@ -111,6 +113,7 @@ qx.Class.define("myapp.Application",
     async main()
     {
       super.main();
+      const that = this; // "this" won't work inside the setTimeout callback
 
       // Enable logging in debug variant
       if (qx.core.Environment.get("qx.debug"))
@@ -142,7 +145,7 @@ qx.Class.define("myapp.Application",
       let numberInput = new qx.ui.form.Spinner();
       numberInput.addListener("changeValue", async function(event) 
       {
-        const that = this; // "this" won't work inside the setTimeout callback 
+ 
         const solNum = event.getData(); // proper event is not available inside the setTimeout callback
 
         if (this.__timerId) { clearTimeout(this.__timerId); } // Clear any existing timer       
@@ -151,8 +154,7 @@ qx.Class.define("myapp.Application",
       topPanel.add(numberInput);
 
       topPanel.add(new qx.ui.core.Spacer(), { flex: 1 });
-      this.__loginButton = makeButton(topPanel, "Login", () => this._handleLoginLogout(), "#ffcccc", 16);
-    
+         
       let middleContainer = new qx.ui.container.Composite(new qx.ui.layout.HBox());
       middleContainer.setDecorator("main");
       mainContainer.add(middleContainer, { flex: 1 });
@@ -173,6 +175,9 @@ qx.Class.define("myapp.Application",
         reportUIs.push(reportUI);
       });
       this.__reportUIs = reportUIs;
+
+      makeButton(topPanel, "Download Reports", () => this.createZipFromReports(reportUIs), "#ccccff", 16);
+      this.__loginButton = makeButton(topPanel, "Login", () => this._handleLoginLogout(), "#ffcccc", 16);
 
       await this._attemptLogin("matts", "yo"); //TODO: remove autologin before release
       await this._changeSol(this, 0);
@@ -520,6 +525,40 @@ qx.Class.define("myapp.Application",
       this.__loginButton.setLabel("Login");
       this.__loginButton.setBackgroundColor("#ffcccc");
       // Add any additional logout logic here
+    },
+
+    async createZipFromReports(reportUIs) 
+    {
+      // Create a new JSZip instance
+      console.log("CREATE THIS from " + reportUIs.length + " RUIs");
+      const zip = new JSZip();
+
+      // Add each object as a file to the zip
+      reportUIs.forEach(reportUI => 
+      {
+        console.log("  RUI " + reportUI.name);
+        const report = reportUI.report;
+        if (report)
+        {
+          const fileName = `${report.name}.txt`;
+          zip.file(fileName, report.content);
+        }
+      });
+
+      // Generate the zip file
+      const zipBlob = await zip.generateAsync({ type: "blob" });
+
+      // Create a download link for the zip file
+      const downloadLink = document.createElement("a");
+      downloadLink.href = URL.createObjectURL(zipBlob);
+      downloadLink.download = "reports.zip";
+
+      // Trigger the download
+      document.body.appendChild(downloadLink);
+      downloadLink.click();
+      document.body.removeChild(downloadLink);
+      console.log("RUIs are DONE DUDE");
+
     },
   }
 });

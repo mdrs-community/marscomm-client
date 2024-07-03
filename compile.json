@@ -25,5 +25,9 @@
       "name": "myapp",
       "bootPath": "source/boot"
     }
-  ]
+  ],
+
+  "serve": {
+    "listenPort": 8080
+  }
 }
