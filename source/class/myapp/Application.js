@@ -1,8 +1,10 @@
-/*TODO
-  transmit animations for chat messages
-  //report Edit button becomes View on non-current sol
-  report bundle download (zip file?)
-  //add button to copy report to clipbored
+/* TODO
+    fix reports to start animations on reentry, like chat
+    fix SolNum calculation
+    for testing purposes, allow initial SolNum to be set in config.json
+    reorg code, especially in App class (do as separate checkin)
+    futz with chat scroll
+    talk to Sean!
 */
 
 //const JSZip = require('jszip');
@@ -238,7 +240,7 @@ qx.Class.define("myapp.Application",
         const reportUI = this._getReportUIbyName(sol.reports[i].name);
         if (reportUI)
         { 
-          reportUI.update(sol.reports[i]);
+          reportUI.changeSol(sol.reports[i]);
         }
       }
     },
@@ -611,7 +613,6 @@ qx.Class.define("myapp.ChatUI",
   **   put IM in window, statting animation
   **   push IM to server
   */
-
   members: 
   {
     chatPanel: null,
@@ -745,7 +746,6 @@ qx.Class.define("myapp.ReportUI",
       that.report.xmitTime = new Date();
       that.network._transmitReport(that.report); // tell server to send report to Earth
       that.realizeState("Transmitted"); 
-      startXmitProgressDisplay(commsDelay, container, 25);
     }
     this.txButton = makeButton(container, "Transmit", onXmit, "gray", 14);
     this.txButton.setEnabled(false);
@@ -771,6 +771,16 @@ qx.Class.define("myapp.ReportUI",
 
     reset() { /* console.log("reset"); */ this.realizeState("Unused"); },
 
+    xmitDone() 
+    { 
+      if (this.xmitProgress) 
+      { 
+        this.container.remove(this.xmitProgress); 
+        this.xmitProgress = null; 
+        this.realizeState("Received");
+      } 
+    },
+
     onChange() 
     { 
       console.log("something changed, Holmez");
@@ -778,17 +788,20 @@ qx.Class.define("myapp.ReportUI",
       this.realizeState();
     },
 
-    update(report) 
+    changeSol(report) 
     { //  instead of copying state out, we need to keep a reference to the report so that we can later update it e.g. when the xmit button is pressed
-      console.log("new report incoming: " + report.name);
+      if (report.transmitted) console.log("changeSol => new report incoming: " + report.name);
       this.report = report;
+      if (this.xmitProgress) this.xmitProgress.forceDone();
       this.realizeState();
     },
 
+    isCurrentSol() { return this.network.getCurrentSolNum() === this.network.getUiSolNum() },
+
     computeState()
     {
-      console.log("compute THIS: " + JSON.stringify(this.report));
-      if (this.report.transmitted) console.log("transmitted..." + commsDelayPassed(this.report.xmitTime, this.commsDelay));
+      if (this.report.transmitted) console.log("compute THIS: " + JSON.stringify(this.report));
+      if (this.report.transmitted) console.log("transmitted..." + this.report.xmitTime.toString() + " " + commsDelayPassed(this.report.xmitTime, this.commsDelay));
       if (this.report.transmitted) 
         if (commsDelayPassed(this.report.xmitTime, this.commsDelay)) return "Received";
         else return "Transmitted";
@@ -799,10 +812,10 @@ qx.Class.define("myapp.ReportUI",
 
     realizeState(forcedState)
     {
-      const isCurrentSol = this.network.getCurrentSolNum() === this.network.getUiSolNum();
+      const isCurrentSol = this.isCurrentSol();
       this.state = forcedState ? forcedState : this.computeState();
-      //console.log("realizing new state: " + this.state + ", isCurrentSol=" + isCurrentSol);
-      const editEnabled = this.state !== "Unused" && isCurrentSol;
+      if (this.report && this.report.transmitted) console.log("realizing new state: " + this.state + ", isCurrentSol=" + isCurrentSol);
+      const editEnabled = this.state !== "Unused"; // && isCurrentSol; // edit button now works in View mode for non-current Sols
       const editBgColor = editEnabled ? "#ccccff" : "#cccccc";
       const txEnabled = editEnabled && this.state !== "Empty";
       const txBgColor = txEnabled ? "#ccccff" : "#cccccc";
@@ -820,12 +833,15 @@ qx.Class.define("myapp.ReportUI",
       else if (this.state === "Transmitted") color = "purple";
       else if (this.state === "Received")    color = "green";
       if (this.label) this.label.setTextColor(color);
+
+      if (this.state === "Transmitted" && this.report && inTransit(this.report, this.commsDelay)) 
+        this.xmitProgress = startXmitProgressDisplay(this.commsDelay, this.container, 33, () => this.xmitDone());
     },
 
     openReportEditor()
     {
       // Create and open the CKEditor window
-      let ckEditorWindow = new myapp.CKEditorWindow(this, this.report.content);
+      let ckEditorWindow = new myapp.CKEditorWindow(this, this.report.content, this.isCurrentSol());
       ckEditorWindow.open();
       //doc.add(ckEditorWindow);      
     },
@@ -890,7 +906,7 @@ qx.Class.define("myapp.CKEditor",
       // Initialize CKEditor with the unique ID
       console.log("init dat bitch");
       let editorElement = document.getElementById(this.__editorId);
-      this.__editor = CKEDITOR.replace(editorElement, { height: '100%' } );
+      this.__editor = CKEDITOR.replace(editorElement, { height: '100%', versionCheck: false } );
 
       // Explicitly focus the editor after initialization
       qx.event.Timer.once(() => 
@@ -938,7 +954,7 @@ qx.Class.define("myapp.CKEditor",
 
 qx.Class.define("myapp.CKEditorWindow", 
 { extend: qx.ui.window.Window,
-  construct: function(parent, content) 
+  construct: function(parent, content, canEdit) 
   {
     this.base(arguments, "CKEditor");
     this.setLayout(new qx.ui.layout.Dock());
@@ -959,10 +975,12 @@ qx.Class.define("myapp.CKEditorWindow",
     this.setAllowMinimize(false);
 
     let toolbar = new qx.ui.toolbar.ToolBar();
-    let okButton = new qx.ui.toolbar.Button("OK");
-    okButton.addListener("execute", this.__onOK, this);
-    toolbar.add(okButton);
-
+    if (canEdit)
+    {
+      let okButton = new qx.ui.toolbar.Button("OK");
+      okButton.addListener("execute", this.__onOK, this);
+      toolbar.add(okButton);
+    }
     let cancelButton = new qx.ui.toolbar.Button("Cancel");
     cancelButton.addListener("execute", this.__onCancel, this);
     toolbar.add(cancelButton);
@@ -1061,7 +1079,7 @@ qx.Class.define("myapp.CircularProgress", {
   }
 });
 
-function startXmitProgressDisplay(commsDelay, parentContainer, size)
+function startXmitProgressDisplay(commsDelay, parentContainer, size, onDone)
 {
   console.log("starting Xmit display for " + commsDelay);
   // Create the circular progress widget
@@ -1080,11 +1098,16 @@ function startXmitProgressDisplay(commsDelay, parentContainer, size)
     if (progress > 1) 
     {
       timer.stop();
-      parentContainer.remove(circularProgress);
+      //parentContainer.remove(circularProgress);
+      if (onDone) onDone();
     }
     circularProgress.setProgress(progress);
   });
-  timer.start();      
+  timer.start();
+
+  circularProgress.forceDone = function () { progress = 1.1;}
+
+  return circularProgress;
 }
 
 
