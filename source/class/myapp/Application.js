@@ -1,7 +1,7 @@
 /* TODO
-    fix reports to start animations on reentry, like chat
-    fix SolNum calculation
-    for testing purposes, allow initial SolNum to be set in config.json
+    //fix reports to start animations on reentry, like chat
+    //fix SolNum calculation
+    //for testing purposes, allow initial SolNum to be set in config.json
     reorg code, especially in App class (do as separate checkin)
     futz with chat scroll
     talk to Sean!
@@ -25,6 +25,10 @@ function timeSinceSent(sentTime)
   const now = new Date();
   return (now - sentTime) / 1000;  
 }
+
+function daysSinceEpoch(date) { return Math.floor(date.getTime() / (1000 * 60 * 60 * 24)); }
+
+function getCurrentSolNum(startDay) { return daysSinceEpoch(new Date()) - startDay; }
 
 function inTransit(obj, commsDelay) 
 { 
@@ -128,7 +132,8 @@ qx.Class.define("myapp.Application",
 
       this.__commsDelay = await this._recvCommsDelay();
       this.startDate    = new Date(await this._recvStartDate());
-      console.log("commsDelay=" + this.__commsDelay + ", startDate=" + this.startDate);
+      this.startDay = daysSinceEpoch(this.startDate);
+      console.log("commsDelay=" + this.__commsDelay + ", startDay=" + this.startDay + ", startDate=" + this.startDate);
 
       // Create the main layout
       let doc = this.getRoot();
@@ -147,11 +152,9 @@ qx.Class.define("myapp.Application",
       let numberInput = new qx.ui.form.Spinner();
       numberInput.addListener("changeValue", async function(event) 
       {
- 
         const solNum = event.getData(); // proper event is not available inside the setTimeout callback
-
         if (this.__timerId) { clearTimeout(this.__timerId); } // Clear any existing timer       
-        this.__timerId = setTimeout(async function() { that._changeSol(that, solNum); }, 700);
+        this.__timerId = setTimeout(async function() { that._changeSol(that, solNum); }, 900);
       }, this);
       topPanel.add(numberInput);
 
@@ -160,8 +163,7 @@ qx.Class.define("myapp.Application",
       let middleContainer = new qx.ui.container.Composite(new qx.ui.layout.HBox());
       middleContainer.setDecorator("main");
       mainContainer.add(middleContainer, { flex: 1 });
-
-      this.chatUI = new myapp.ChatUI(middleContainer, this.__commsDelay, this);
+      this.chatUI = new myapp.ChatUI(middleContainer, this.__commsDelay, this, this.startDay);
 
       let rightPanel = new qx.ui.container.Composite(new qx.ui.layout.VBox(10));
       rightPanel.setPadding(10);
@@ -173,7 +175,7 @@ qx.Class.define("myapp.Application",
       console.log(reportNames);
       reportNames.forEach((name, index) => 
       {
-        let reportUI = new myapp.ReportUI(name, rightPanel, this.__commsDelay, this);
+        let reportUI = new myapp.ReportUI(name, rightPanel, this.__commsDelay, this, this.startDay);
         reportUIs.push(reportUI);
       });
       this.__reportUIs = reportUIs;
@@ -184,7 +186,6 @@ qx.Class.define("myapp.Application",
       await this._attemptLogin("matts", "yo"); //TODO: remove autologin before release
       await this._changeSol(this, 0);
       this.checkTransmissions();
-
     },
 
     sleep(ms) { return new Promise((resolve) => { setTimeout(resolve, ms); }); },
@@ -202,20 +203,6 @@ qx.Class.define("myapp.Application",
         setTimeout(checkEt, 20*1000);
       }
       checkEt();
-    },
-
-    checkTransmissions0()
-    {
-      const reportUIs = that.__reportUIs;
-      for (let i = 0; i < reportUIs.length; i++)
-        reportUIs[i].checkTransmission();
-      setTimeout(this.checkTransmissions, 20*1000);
-    },
-
-    commsDelayPassed(sentTime)
-    {
-      const now = new Date();
-      return (now - sentTime) * 1000 >= this.__commsDelay;
     },
 
     _getReportUIbyName(name)
@@ -245,16 +232,6 @@ qx.Class.define("myapp.Application",
       }
     },
 
-    daysBetween(date1, date2) 
-    {
-      if (!(date1 instanceof Date) || !(date2 instanceof Date)) { throw new Error("Both arguments must be valid Date objects"); }
-      const timeDifference = Math.abs(date2 - date1); // Get the time difference in milliseconds
-      const millisecondsPerDay = 1000 * 60 * 60 * 24;
-      const daysDifference = Math.floor(timeDifference / millisecondsPerDay);
-      return daysDifference;
-    },
-
-    getCurrentSolNum() { return this.daysBetween(this.startDate, new Date()); },
     getUiSolNum() { return this.__solNum; },
 
     async _changeSol(that, solNum) 
@@ -571,11 +548,12 @@ qx.Class.define("myapp.Application",
 
 qx.Class.define("myapp.ChatUI", 
 { extend: qx.core.Object, 
-  construct: function(parentContainer, commsDelay, network) 
+  construct: function(parentContainer, commsDelay, network, startDay) 
   {
     const that = this;
     this.commsDelay = commsDelay;
     this.network = network;
+    this.startDay = startDay;
 
     let chatContainer = new qx.ui.container.Composite(new qx.ui.layout.VBox());
     chatContainer.setDecorator("main");
@@ -587,8 +565,9 @@ qx.Class.define("myapp.ChatUI",
     this.chatPanel = chatPanel;
     chatPanel.setDecorator("main");
     chatContainer.add(chatPanel, { flex: 2 });
-    //let chatScroll = new qx.ui.container.Scroll().add(chatPanel);
-    //chatContainer.add(chatScroll, { flex: 1 });
+    let chatScroll = new qx.ui.container.Scroll();
+    chatScroll.add(chatPanel);
+    chatContainer.add(chatScroll, { flex: 1 });
 
     let chatInputContainer = new qx.ui.container.Composite(new qx.ui.layout.HBox(10));
     chatInputContainer.setPadding(10);
@@ -618,15 +597,26 @@ qx.Class.define("myapp.ChatUI",
     chatPanel: null,
     commsDelay: 0,
     network: null,
+    startDay: 0,
 
     reset() { try { this.chatPanel.removeAll(); } catch (e) { console.log("clean et up"); } this.ims = null; },
 
+    xmitDone(container) 
+    { 
+      if (this.xmitProgress) 
+      { 
+        container.remove(this.xmitProgress); 
+        this.xmitProgress = null; 
+      } 
+    },
+
     changeSol(ims)
     {
-      console.log("changing Sol; update dat chat wit " + ims.length + " ims");
+      console.log("changing Sol to " + this.network.getUiSolNum() + "; update dat chat wit " + ims.length + " ims");
+      console.log("currentSolNum is " + getCurrentSolNum(this.startDay));
       this.reset();
       this.ims = ims;
-      const isCurrentSol = this.network.getCurrentSolNum() === this.network.getUiSolNum();
+      const isCurrentSol = getCurrentSolNum(this.startDay) === this.network.getUiSolNum();
       this.chatInput.setEnabled(isCurrentSol);
       for (let i = 0; i < ims.length; i++)
         this.addIM(ims[i]);
@@ -646,7 +636,8 @@ qx.Class.define("myapp.ChatUI",
       container.add(label);  
       //if (inTransit(im)) console.log("  still in transit!")
       //else console.log("time since sent is " + timeSinceSent(im.xmitTime));
-      if (inTransit(im, this.commsDelay)) startXmitProgressDisplay(this.commsDelay - timeInTransit(im), container, 30);
+      if (inTransit(im, this.commsDelay)) 
+        this.xmitProgress = startXmitProgressDisplay(this.commsDelay - timeInTransit(im), container, 45, (container) => this.xmitDone(container));
       this.chatPanel.add(container);
     },
 
@@ -670,6 +661,15 @@ qx.Class.define("myapp.ChatUI",
       that.network._sendIM(im); // send IM to server
     },
 
+    _doMessages(that)
+    {
+      for (let i = 0; i < 15; i++)
+      {
+        that._doMessage(that);
+        that.chatInput.setValue("peat and repeat");
+      }
+    },
+
     _parseMessage(message) 
     {
       // Replace basic emoticons
@@ -691,13 +691,14 @@ qx.Class.define("myapp.ChatUI",
 
 qx.Class.define("myapp.ReportUI", 
 { extend: qx.core.Object, 
-  construct: function(name, parentContainer, commsDelay, network) 
+  construct: function(name, parentContainer, commsDelay, network, startDay) 
   {
     const that = this;
     this.base(arguments); // Call superclass constructor
     this.name = name;
-    this.network = network;
     this.commsDelay = commsDelay;
+    this.network = network;
+    this.startDay = startDay;
 
     let container = new qx.ui.container.Composite(new qx.ui.layout.HBox(10));
     parentContainer.add(container);
@@ -771,11 +772,11 @@ qx.Class.define("myapp.ReportUI",
 
     reset() { /* console.log("reset"); */ this.realizeState("Unused"); },
 
-    xmitDone() 
+    xmitDone(container) 
     { 
       if (this.xmitProgress) 
       { 
-        this.container.remove(this.xmitProgress); 
+        container.remove(this.xmitProgress); 
         this.xmitProgress = null; 
         this.realizeState("Received");
       } 
@@ -796,7 +797,7 @@ qx.Class.define("myapp.ReportUI",
       this.realizeState();
     },
 
-    isCurrentSol() { return this.network.getCurrentSolNum() === this.network.getUiSolNum() },
+    isCurrentSol() { return getCurrentSolNum(this.startDay) === this.network.getUiSolNum() },
 
     computeState()
     {
@@ -835,7 +836,7 @@ qx.Class.define("myapp.ReportUI",
       if (this.label) this.label.setTextColor(color);
 
       if (this.state === "Transmitted" && this.report && inTransit(this.report, this.commsDelay)) 
-        this.xmitProgress = startXmitProgressDisplay(this.commsDelay, this.container, 33, () => this.xmitDone());
+        this.xmitProgress = startXmitProgressDisplay(this.commsDelay, this.container, 33, (container) => this.xmitDone(container));
     },
 
     openReportEditor()
@@ -1099,7 +1100,7 @@ function startXmitProgressDisplay(commsDelay, parentContainer, size, onDone)
     {
       timer.stop();
       //parentContainer.remove(circularProgress);
-      if (onDone) onDone();
+      if (onDone) onDone(parentContainer);
     }
     circularProgress.setProgress(progress);
   });
