@@ -577,15 +577,6 @@ qx.Class.define("myapp.ChatUI",
 
     reset() { try { this.chatPanel.removeAll(); } catch (e) { console.log("clean et up"); } this.ims = null; },
 
-    xmitDone(container) 
-    { 
-      if (this.xmitProgress) 
-      { 
-        container.remove(this.xmitProgress); 
-        this.xmitProgress = null; 
-      } 
-    },
-
     changeSol(ims)
     {
       console.log("changing Sol to " + this.network.getUiSolNum() + "; update dat chat wit " + ims.length + " ims");
@@ -613,7 +604,7 @@ qx.Class.define("myapp.ChatUI",
       //if (inTransit(im)) console.log("  still in transit!")
       //else console.log("time since sent is " + timeSinceSent(im.xmitTime));
       if (inTransit(im, this.commsDelay)) 
-        this.xmitProgress = startXmitProgressDisplay(this.commsDelay - timeInTransit(im), container, 55, (container) => this.xmitDone(container));
+        startXmitProgressDisplay(this.commsDelay - timeInTransit(im), container, 55);
       this.chatPanel.add(container);
     },
 
@@ -746,12 +737,12 @@ qx.Class.define("myapp.ReportUI",
 
     xmitDone(container) 
     { 
-      if (this.xmitProgress) 
-      { 
-        container.remove(this.xmitProgress); 
-        this.xmitProgress = null; 
+      //if (this.xmitProgress) 
+      //{ 
+      //  container.remove(this.xmitProgress); 
+      //  this.xmitProgress = null; 
         this.realizeState("Received");
-      } 
+      //} 
     },
 
     onChange() 
@@ -1069,8 +1060,8 @@ function startXmitProgressDisplay(commsDelay, parentContainer, size, onDone)
     if (progress > 1) 
     {
       timer.stop();
-      //if (onDone) onDone(parentContainer);
       parentContainer.remove(circularProgress);
+      if (onDone) onDone(parentContainer);
     }
     circularProgress.setProgress(progress);
   });
