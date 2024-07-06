@@ -254,6 +254,42 @@ qx.Class.define("myapp.Application",
       }
     },
 
+    doMessage(chatPanel, chatInput) 
+    {
+      let message = chatInput.getValue().trim();
+      if (!message) {
+        alert("Please enter a message.");
+        return;
+      }
+
+      // Simple markdown and emoticon parsing
+      let formattedMessage = this.parseMessage(message);
+      let newMessage = new qx.ui.basic.Label().set({
+        value: formattedMessage,
+        rich: true
+      });
+      chatPanel.add(newMessage);
+      chatInput.setValue("");
+      this.sendIM(formattedMessage);
+    },
+
+    parseMessage(message) 
+    {
+      // Replace basic emoticons
+      message = message.replace(/:\)/g, '😊');
+      message = message.replace(/:\(/g, '😞');
+
+      // Replace markdown formatting
+      message = message.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+      message = message.replace(/__(.*?)__/g, '<em>$1</em>');
+      message = message.replace(/`(.*?)`/g, '<code>$1</code>');
+
+      return message;
+    },
+
+    //--------------------------------------------------------------------------------------------
+    // networking/server comms
+
     async doGET(endpoint)
     {
       console.log("GETsome: " + endpoint);
@@ -362,38 +398,9 @@ qx.Class.define("myapp.Application",
 
     async recvStartDate()   { return (await this.doGET('start-date')).startDate; },
 
-    doMessage(chatPanel, chatInput) 
-    {
-      let message = chatInput.getValue().trim();
-      if (!message) {
-        alert("Please enter a message.");
-        return;
-      }
 
-      // Simple markdown and emoticon parsing
-      let formattedMessage = this.parseMessage(message);
-      let newMessage = new qx.ui.basic.Label().set({
-        value: formattedMessage,
-        rich: true
-      });
-      chatPanel.add(newMessage);
-      chatInput.setValue("");
-      this.sendIM(formattedMessage);
-    },
-
-    parseMessage(message) 
-    {
-      // Replace basic emoticons
-      message = message.replace(/:\)/g, '😊');
-      message = message.replace(/:\(/g, '😞');
-
-      // Replace markdown formatting
-      message = message.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-      message = message.replace(/__(.*?)__/g, '<em>$1</em>');
-      message = message.replace(/`(.*?)`/g, '<code>$1</code>');
-
-      return message;
-    },
+    //--------------------------------------------------------------------------------------------
+    // login
 
     handleLoginLogout() 
     {
@@ -472,6 +479,9 @@ qx.Class.define("myapp.Application",
       // Add any additional logout logic here
     },
 
+    //--------------------------------------------------------------------------------------------
+    // other
+
     async createZipFromReports(reportUIs) 
     {
       // Create a new JSZip instance
@@ -546,7 +556,7 @@ qx.Class.define("myapp.ChatUI",
       { if (e.getKeyIdentifier() === "Enter") { that.doMessage(that); } } );
     chatInputContainer.add(chatInput, { flex: 1 });
 
-    makeButton(chatInputContainer, "Send", () => this.doMessage(that), "#ccccff", 14);
+    makeButton(chatInputContainer, "Send", () => this.doMessage(this), "#ccccff", 14);
   },
 
   /* scenarios: 
@@ -603,13 +613,15 @@ qx.Class.define("myapp.ChatUI",
       //if (inTransit(im)) console.log("  still in transit!")
       //else console.log("time since sent is " + timeSinceSent(im.xmitTime));
       if (inTransit(im, this.commsDelay)) 
-        this.xmitProgress = startXmitProgressDisplay(this.commsDelay - timeInTransit(im), container, 45, (container) => this.xmitDone(container));
+        this.xmitProgress = startXmitProgressDisplay(this.commsDelay - timeInTransit(im), container, 55, (container) => this.xmitDone(container));
       this.chatPanel.add(container);
     },
 
     doMessage(that) 
     {
-      let message = that.chatInput.getValue().trim();
+      let message = that.chatInput.getValue();
+      if (message === null) return;
+      message = message.trim();
       console.log("doing message: " + message);
       if (!message) 
       {
@@ -649,9 +661,7 @@ qx.Class.define("myapp.ChatUI",
 
       return message;
     },
-
   }
-
 });
 
 
@@ -696,12 +706,8 @@ qx.Class.define("myapp.ReportUI",
     //fsb.setEnabled(false); // disabling the FileSelectorButton somehow prevents it working properly even after it's re-enabled -- FARUK
     this.fsButton = fsb;
 
-
-    //const cimage = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAMAAAAoLQ9TAAAAVFBMVEUAAAAAAAClpaUjIyP09PTf39+6urpCQkI8PDxSUlKUlJQYGBhHR0dLS0soKCgsLCzz8/PY2NisrKzW1tZgYGDGxsY7OzsZGRkRERELCwtVVVV6enp7e3vX19c//nxDAAAAAXRSTlMAQObYZgAAAAFiS0dEDf3t0zQAAAAJcEhZcwAADsIAAA7CARUoSoAAAAA6SURBVBjTY2AAgRlABQAFCwwAzYAkMEAkBC0JqAViGgyFQnpgJVhcgItGKFhDKTFgMQpDiYQA4W1QSAAAOcEBViOVOwQAAAABJRU5ErkJggg==";
     const cimage = "myapp/copyIcon.png";
     const pimage = "myapp/pasteIcon.png";
-    //const cimage = "myapp/test.png";
-    //const pimage = "myapp/test.png";
     this.copyButton = makeButton(container, null, () => navigator.clipboard.writeText(that.report.content), "#ccccff", 14, cimage);
     this.pasteButton = makeButton(container, null, () => that.setContentFromBored(), "gray", 14, pimage);
 
@@ -1063,7 +1069,8 @@ function startXmitProgressDisplay(commsDelay, parentContainer, size, onDone)
     if (progress > 1) 
     {
       timer.stop();
-      if (onDone) onDone(parentContainer);
+      //if (onDone) onDone(parentContainer);
+      parentContainer.remove(circularProgress);
     }
     circularProgress.setProgress(progress);
   });
