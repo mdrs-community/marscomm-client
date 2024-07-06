@@ -3,7 +3,7 @@
     //fix SolNum calculation
     //for testing purposes, allow initial SolNum to be set in config.json
     reorg code, especially in App class (do as separate checkin)
-    futz with chat scroll
+    //futz with chat scroll
     talk to Sean!
 */
 
@@ -103,13 +103,13 @@ qx.Class.define("myapp.Application",
 
   members:
   {
-    __isLoggedIn: false,
-    __username: null,
-    __token: 0,
-    __loginButton: null,
-    __solNum: 0,
-    __sol: null,
-    __commsDelay: 0,
+    isLoggedIn: false,
+    username: null,
+    token: 0,
+    loginButton: null,
+    solNum: 0,
+    sol: null,
+    commsDelay: 0,
     startDate: null,
     reportUIs: null,
     chatUI: null,
@@ -130,10 +130,10 @@ qx.Class.define("myapp.Application",
         qx.log.appender.Console;
       }
 
-      this.__commsDelay = await this._recvCommsDelay();
-      this.startDate    = new Date(await this._recvStartDate());
+      this.commsDelay = await this.recvCommsDelay();
+      this.startDate    = new Date(await this.recvStartDate());
       this.startDay = daysSinceEpoch(this.startDate);
-      console.log("commsDelay=" + this.__commsDelay + ", startDay=" + this.startDay + ", startDate=" + this.startDate);
+      console.log("commsDelay=" + this.commsDelay + ", startDay=" + this.startDay + ", startDate=" + this.startDate);
 
       // Create the main layout
       let doc = this.getRoot();
@@ -153,8 +153,8 @@ qx.Class.define("myapp.Application",
       numberInput.addListener("changeValue", async function(event) 
       {
         const solNum = event.getData(); // proper event is not available inside the setTimeout callback
-        if (this.__timerId) { clearTimeout(this.__timerId); } // Clear any existing timer       
-        this.__timerId = setTimeout(async function() { that._changeSol(that, solNum); }, 900);
+        if (this.timerId) { clearTimeout(this.timerId); } // Clear any existing timer       
+        this.timerId = setTimeout(async function() { that.changeSol(that, solNum); }, 900);
       }, this);
       topPanel.add(numberInput);
 
@@ -163,28 +163,28 @@ qx.Class.define("myapp.Application",
       let middleContainer = new qx.ui.container.Composite(new qx.ui.layout.HBox());
       middleContainer.setDecorator("main");
       mainContainer.add(middleContainer, { flex: 1 });
-      this.chatUI = new myapp.ChatUI(middleContainer, this.__commsDelay, this, this.startDay);
+      this.chatUI = new myapp.ChatUI(middleContainer, this.commsDelay, this, this.startDay);
 
       let rightPanel = new qx.ui.container.Composite(new qx.ui.layout.VBox(10));
       rightPanel.setPadding(10);
       rightPanel.setDecorator("main");
       middleContainer.add(rightPanel, { flex: 1 });
 
-      let reportNames = await this._recvReports();
+      let reportNames = await this.recvReports();
       let reportUIs = [];
       console.log(reportNames);
       reportNames.forEach((name, index) => 
       {
-        let reportUI = new myapp.ReportUI(name, rightPanel, this.__commsDelay, this, this.startDay);
+        let reportUI = new myapp.ReportUI(name, rightPanel, this.commsDelay, this, this.startDay);
         reportUIs.push(reportUI);
       });
-      this.__reportUIs = reportUIs;
+      this.reportUIs = reportUIs;
 
       makeButton(topPanel, "Download Reports", () => this.createZipFromReports(reportUIs), "#ccccff", 16);
-      this.__loginButton = makeButton(topPanel, "Login", () => this._handleLoginLogout(), "#ffcccc", 16);
+      this.loginButton = makeButton(topPanel, "Login", () => this.handleLoginLogout(), "#ffcccc", 16);
 
-      await this._attemptLogin("matts", "yo"); //TODO: remove autologin before release
-      await this._changeSol(this, 0);
+      await this.attemptLogin("matts", "yo"); //TODO: remove autologin before release
+      await this.changeSol(this, 0);
       this.checkTransmissions();
     },
 
@@ -197,7 +197,7 @@ qx.Class.define("myapp.Application",
       function checkEt()
       {
         console.log("check et out");
-        const reportUIs = that.__reportUIs;
+        const reportUIs = that.reportUIs;
         for (let i = 0; i < reportUIs.length; i++)
           reportUIs[i].checkTransmission();
         setTimeout(checkEt, 20*1000);
@@ -205,26 +205,26 @@ qx.Class.define("myapp.Application",
       checkEt();
     },
 
-    _getReportUIbyName(name)
+    getReportUIbyName(name)
     {
-      const reportUIs = this.__reportUIs;
+      const reportUIs = this.reportUIs;
       for (let i = 0; i < reportUIs.length; i++)
         if (reportUIs[i].name === name) return reportUIs[i];
       return null;
     },
 
-    _syncDisplay() 
+    syncDisplay() 
     { 
-      const sol = this.__sol;
+      const sol = this.sol;
 
       this.chatUI.changeSol(sol.ims);
 
-      const reportUIs = this.__reportUIs;
+      const reportUIs = this.reportUIs;
       for (let i = 0; i < reportUIs.length; i++)
         reportUIs[i].reset();
       for (let i = 0; i < sol.reports.length; i++)
       {
-        const reportUI = this._getReportUIbyName(sol.reports[i].name);
+        const reportUI = this.getReportUIbyName(sol.reports[i].name);
         if (reportUI)
         { 
           reportUI.changeSol(sol.reports[i]);
@@ -232,20 +232,20 @@ qx.Class.define("myapp.Application",
       }
     },
 
-    getUiSolNum() { return this.__solNum; },
+    getUiSolNum() { return this.solNum; },
 
-    async _changeSol(that, solNum) 
+    async changeSol(that, solNum) 
     { 
       console.log("time THIS: " + solNum);
-      that.__solNum = solNum;
-      console.log("Sol set to " + that.__solNum);
-      const sol = await that._recvSol(solNum);
+      that.solNum = solNum;
+      console.log("Sol set to " + that.solNum);
+      const sol = await that.recvSol(solNum);
       console.log(sol); 
-      that.__sol = sol;
-      that._syncDisplay();
+      that.sol = sol;
+      that.syncDisplay();
     },    
 
-    _addContent(chatPanel, numberInput) 
+    addContent(chatPanel, numberInput) 
     {
       let number = numberInput.getValue();
       for (let i = 0; i < number; i++) {
@@ -254,7 +254,7 @@ qx.Class.define("myapp.Application",
       }
     },
 
-    async _doGET(endpoint)
+    async doGET(endpoint)
     {
       console.log("GETsome: " + endpoint);
       try 
@@ -280,11 +280,11 @@ qx.Class.define("myapp.Application",
 
     },
 
-    async _doPOST(endpoint, body)
+    async doPOST(endpoint, body)
     {
       if (endpoint !== 'login')
       {
-        body.username = this.__username;
+        body.username = this.username;
         body.token = "Boken";
       }
       console.log("POSTality: " + JSON.stringify(body));
@@ -312,19 +312,19 @@ qx.Class.define("myapp.Application",
       return null;
     },
 
-    async _sendIM(im)
+    async sendIM(im)
     {
       const body = { message: im.content };
-      this._doPOST('ims', body);
+      this.doPOST('ims', body);
     },
 
-    async _sendLogin(username, password)
+    async sendLogin(username, password)
     {
       const body = { username: username, password, password };
-      return await this._doPOST('login', body);
+      return await this.doPOST('login', body);
     },
 
-    async _sendReport(report)
+    async sendReport(report)
     {
       const body = 
       {
@@ -333,22 +333,22 @@ qx.Class.define("myapp.Application",
         username: "matts",
         token: "Boken"
       };
-      this._doPOST('reports/update', body);
+      this.doPOST('reports/update', body);
     },
 
-    async _transmitReport(report)
+    async transmitReport(report)
     {
       const body = 
       {
         username: "matts",
         token: "Boken"
       };
-      this._doPOST('reports/transmit/' + report.name, body);
+      this.doPOST('reports/transmit/' + report.name, body);
     },
 
-    async _recvSol(solNum) 
+    async recvSol(solNum) 
     { 
-      const sol = await this._doGET('sols/' + solNum);
+      const sol = await this.doGET('sols/' + solNum);
       for (let i = 0; i < sol.ims.length; i++)
         sol.ims[i].xmitTime = new Date(sol.ims[i].xmitTime);
       for (let i = 0; i < sol.reports.length; i++)
@@ -356,47 +356,13 @@ qx.Class.define("myapp.Application",
       return sol; 
     },
 
-    async _recvReports()   { return await this._doGET('reports'); },
+    async recvReports()   { return await this.doGET('reports'); },
 
-    async _recvCommsDelay()   { return (await this._doGET('comms-delay')).commsDelay; },
+    async recvCommsDelay()   { return (await this.doGET('comms-delay')).commsDelay; },
 
-    async _recvStartDate()   { return (await this._doGET('start-date')).startDate; },
+    async recvStartDate()   { return (await this.doGET('start-date')).startDate; },
 
-    async _transmitMessage0(message)
-    {
-      const data = 
-      {
-        message: message,
-        username: "matts",
-        token: "Boken"
-      };
-      alert(JSON.stringify(data));
-      try 
-      {
-        const response = await fetch('http://localhost:8081/ims', 
-        {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data)
-        });
-
-        if (response.ok) 
-        {
-            const result = await response.text();
-            alert('File uploaded successfully: ' + result);
-        } else 
-        {
-            alert('File upload failed.');
-            alert(JSON.stringify(response));
-        }
-      } catch (error) 
-      {
-        console.error('Error uploading file:', error);
-        alert('An error occurred while uploading the file.');
-      }
-    },
-
-    _doMessage(chatPanel, chatInput) 
+    doMessage(chatPanel, chatInput) 
     {
       let message = chatInput.getValue().trim();
       if (!message) {
@@ -405,17 +371,17 @@ qx.Class.define("myapp.Application",
       }
 
       // Simple markdown and emoticon parsing
-      let formattedMessage = this._parseMessage(message);
+      let formattedMessage = this.parseMessage(message);
       let newMessage = new qx.ui.basic.Label().set({
         value: formattedMessage,
         rich: true
       });
       chatPanel.add(newMessage);
       chatInput.setValue("");
-      this._sendIM(formattedMessage);
+      this.sendIM(formattedMessage);
     },
 
-    _parseMessage(message) 
+    parseMessage(message) 
     {
       // Replace basic emoticons
       message = message.replace(/:\)/g, '😊');
@@ -429,27 +395,27 @@ qx.Class.define("myapp.Application",
       return message;
     },
 
-    _handleLoginLogout() 
+    handleLoginLogout() 
     {
-      if (this.__isLoggedIn) 
+      if (this.isLoggedIn) 
       {
         // Display logout menu
         let menu = new qx.ui.menu.Menu();
         let logoutButton = new qx.ui.menu.Button("Log out");
-        logoutButton.addListener("execute", () => this._logout());
+        logoutButton.addListener("execute", () => this.logout());
         menu.add(logoutButton);
-        menu.setOpener(this.__loginButton);
+        menu.setOpener(this.loginButton);
         menu.open();
         //menu.placeToWidget(this.__loginButton); // this doesn't seem to be necessary when using setOpener
       }
       else 
-        this._openLoginDialog();
+        this.openLoginDialog();
     },
 
-    _openLoginDialog() 
+    openLoginDialog() 
     {
       let loginDialog = new qx.ui.window.Window("Login");
-      loginDialog.setLayout(new qx.ui.layout.VBox(10));
+      loginDialog._setLayout(new qx.ui.layout.VBox(10));
       loginDialog.setModal(true);
       loginDialog.setShowMinimize(false);
       loginDialog.setShowMaximize(false);
@@ -468,7 +434,7 @@ qx.Class.define("myapp.Application",
       loginDialog.add(buttonContainer);
 
       let loginButton = new qx.ui.form.Button("Login");
-      loginButton.addListener("execute", () => this._attemptLogin(usernameInput.getValue(), passwordInput.getValue(), loginDialog));
+      loginButton.addListener("execute", () => this.attemptLogin(usernameInput.getValue(), passwordInput.getValue(), loginDialog));
       buttonContainer.add(loginButton);
 
       let cancelButton = new qx.ui.form.Button("Cancel");
@@ -479,17 +445,17 @@ qx.Class.define("myapp.Application",
       loginDialog.open();
     },
 
-    async _attemptLogin(username, password, loginDialog) 
+    async attemptLogin(username, password, loginDialog) 
     {
-      const result = await this._sendLogin(username, password);
+      const result = await this.sendLogin(username, password);
       if (result.token)
       {
-        this.__isLoggedIn = true;
-        this.__username = username;
-        this.__token = result.token;
-        this.__loginButton.setLabel(username);
+        this.isLoggedIn = true;
+        this.username = username;
+        this.token = result.token;
+        this.loginButton.setLabel(username);
         //this.__loginButton.setBackgroundColor("#ccccff");
-        setBGColor ( this.__loginButton, "#ccccff" );
+        setBGColor ( this.loginButton, "#ccccff" );
         if (loginDialog) loginDialog.close();
       } else {
         alert("Invalid username or password");
@@ -497,12 +463,12 @@ qx.Class.define("myapp.Application",
 
     },
 
-    _logout() 
+    logout() 
     {
-      this.__isLoggedIn = false;
-      this.__username = null;
-      this.__loginButton.setLabel("Login");
-      this.__loginButton.setBackgroundColor("#ffcccc");
+      this.isLoggedIn = false;
+      this.username = null;
+      this.loginButton.setLabel("Login");
+      this.loginButton.setBackgroundColor("#ffcccc");
       // Add any additional logout logic here
     },
 
@@ -577,10 +543,10 @@ qx.Class.define("myapp.ChatUI",
     this.chatInput = chatInput;
     chatInput.setPlaceholder("Type a message...");
     chatInput.addListener("keypress", function(e) 
-      { if (e.getKeyIdentifier() === "Enter") { that._doMessage(that); } } );
+      { if (e.getKeyIdentifier() === "Enter") { that.doMessage(that); } } );
     chatInputContainer.add(chatInput, { flex: 1 });
 
-    makeButton(chatInputContainer, "Send", () => this._doMessage(that), "#ccccff", 14);
+    makeButton(chatInputContainer, "Send", () => this.doMessage(that), "#ccccff", 14);
   },
 
   /* scenarios: 
@@ -630,7 +596,7 @@ qx.Class.define("myapp.ChatUI",
   
       const str = '<b>' + im.user + '</b> <font size="-2">' + (new Date()).toString() + ':</font><br>' + im.content + '<br> <br>';
       const label = new qx.ui.basic.Label().set( { value: str, rich: true });
-      const color = (im.user === this.network.__username) ? "blue" : "black";
+      const color = (im.user === this.network.username) ? "blue" : "black";
       label.setTextColor(color);
       label.setFont(new qx.bom.Font(16, ["Arial"]));
       container.add(label);  
@@ -641,7 +607,7 @@ qx.Class.define("myapp.ChatUI",
       this.chatPanel.add(container);
     },
 
-    _doMessage(that) 
+    doMessage(that) 
     {
       let message = that.chatInput.getValue().trim();
       console.log("doing message: " + message);
@@ -653,24 +619,24 @@ qx.Class.define("myapp.ChatUI",
 
       that.chatInput.setValue("");
       // Simple markdown and emoticon parsing
-      let formattedMessage = that._parseMessage(message);
-      const im = newIM(formattedMessage, that.network.__username, that.commsDelay);
+      let formattedMessage = that.parseMessage(message);
+      const im = newIM(formattedMessage, that.network.username, that.commsDelay);
       console.log(im);
       that.addIM(im);           // add IM to chatPanel
       that.ims.push(im);        // add IM to local model
-      that.network._sendIM(im); // send IM to server
+      that.network.sendIM(im); // send IM to server
     },
 
-    _doMessages(that)
+    doMessages(that)
     {
       for (let i = 0; i < 15; i++)
       {
-        that._doMessage(that);
+        that.doMessage(that);
         that.chatInput.setValue("peat and repeat");
       }
     },
 
-    _parseMessage(message) 
+    parseMessage(message) 
     {
       // Replace basic emoticons
       message = message.replace(/:\)/g, '😊');
@@ -745,7 +711,7 @@ qx.Class.define("myapp.ReportUI",
     { 
       that.report.transmitted = true;
       that.report.xmitTime = new Date();
-      that.network._transmitReport(that.report); // tell server to send report to Earth
+      that.network.transmitReport(that.report); // tell server to send report to Earth
       that.realizeState("Transmitted"); 
     }
     this.txButton = makeButton(container, "Transmit", onXmit, "gray", 14);
@@ -785,7 +751,7 @@ qx.Class.define("myapp.ReportUI",
     onChange() 
     { 
       console.log("something changed, Holmez");
-      this.network._sendReport(this.report);
+      this.network.sendReport(this.report);
       this.realizeState();
     },
 
@@ -879,56 +845,56 @@ qx.Class.define("myapp.CKEditor",
     this.base(arguments);
     this._setLayout(new qx.ui.layout.Grow());
     this.afterInit = afterInit;
-    this.addListenerOnce("appear", this.__initCKEditor, this); // Add an appear listener to initialize CKEditor
-    this.addListener("resize", this.__onResize, this); // Add a resize listener to adjust CKEditor height
+    this.addListenerOnce("appear", this.initCKEditor, this); // Add an appear listener to initialize CKEditor
+    this.addListener("resize", this.onResize, this); // Add a resize listener to adjust CKEditor height
   },
 
   members: 
   {
-    __editor: null,
-    __editorId: null,
+    editor: null,
+    editorId: null,
     afterInit: null,
 
-    _createContentElement: function() 
+    _createContentElement: function() // override -- do NOT rename
     {
       // Create a div with a unique ID for CKEditor to attach to
-      this.__editorId = "ckeditor-" + this.toHashCode();
+      this.editorId = "ckeditor-" + this.toHashCode();
       let div = new qx.html.Element("div", null, 
       {
-        "id": this.__editorId,
+        "id": this.editorId,
         "style": "height:100%;"
       });
 
       return div;
     },
 
-    __initCKEditor: function() 
+    initCKEditor: function() 
     {
       // Initialize CKEditor with the unique ID
       console.log("init dat bitch");
-      let editorElement = document.getElementById(this.__editorId);
-      this.__editor = CKEDITOR.replace(editorElement, { height: '100%', versionCheck: false } );
+      let editorElement = document.getElementById(this.editorId);
+      this.editor = CKEDITOR.replace(editorElement, { height: '100%', versionCheck: false } );
 
       // Explicitly focus the editor after initialization
       qx.event.Timer.once(() => 
       { 
         if (this.afterInit) this.afterInit(); 
-        this.__editor.focus();
-        this.__updateEditorHeight();
+        this.editor.focus();
+        this.updateEditorHeight();
         console.log("post init fun"); 
       }, this, 300);
     },
 
-    __onResize: function() { this.__updateEditorHeight(); },
+    onResize: function() { this.updateEditorHeight(); },
 
-    __updateEditorHeight: function() 
+    updateEditorHeight: function() 
     {
-      if (this.__editor) 
+      if (this.editor) 
       {
         //let containerHeight = this.getContentElement().getDomElement().clientHeight;
         let containerHeight = this.getBounds().height - 50;
         console.log("winder size: " + containerHeight);
-        this.__editor.resize('100%', containerHeight);
+        this.editor.resize('100%', containerHeight);
       }
     },
 
@@ -936,18 +902,18 @@ qx.Class.define("myapp.CKEditor",
     setContent: function(data) 
     {
       console.log("setting editor content: " + data);
-      console.log("this.__editor" + this.__editor);
-      if (this.__editor) 
-        this.__editor.setData(data);
+      console.log("this.editor" + this.editor);
+      if (this.editor) 
+        this.editor.setData(data);
       else 
-        this.addListenerOnce("editorReady", () => { this.__editor.setData(data); } );
+        this.addListenerOnce("editorReady", () => { this.editor.setData(data); } );
     },
     
         // Method to get data from the editor
     getContent: function() 
     {
-      if (this.__editor) 
-        return this.__editor.getData();
+      if (this.editor) 
+        return this.editor.getData();
       return "";
     }
   }
@@ -979,11 +945,11 @@ qx.Class.define("myapp.CKEditorWindow",
     if (canEdit)
     {
       let okButton = new qx.ui.toolbar.Button("OK");
-      okButton.addListener("execute", this.__onOK, this);
+      okButton.addListener("execute", this.onOK, this);
       toolbar.add(okButton);
     }
     let cancelButton = new qx.ui.toolbar.Button("Cancel");
-    cancelButton.addListener("execute", this.__onCancel, this);
+    cancelButton.addListener("execute", this.onCancel, this);
     toolbar.add(cancelButton);
 
     this.add(toolbar, { edge: "south" });
@@ -994,7 +960,7 @@ qx.Class.define("myapp.CKEditorWindow",
     ckEditor: null,
     parent: null,
 
-    __onOK: function() 
+    onOK: function() 
     {
       let content = this.ckEditor.getContent();
       console.log("onOK setting content: " + content);
@@ -1002,7 +968,7 @@ qx.Class.define("myapp.CKEditorWindow",
       this.close();
     },
 
-    __onCancel: function() { this.close(); }
+    onCancel: function() { this.close(); }
   }
 
 });
@@ -1015,34 +981,34 @@ qx.Class.define("myapp.CircularProgress", {
   construct: function() {
     this.base(arguments);
     this._setLayout(new qx.ui.layout.Canvas());
-    this.__progress = 0;
+    this.progress = 0;
 
     // Add a listener to update the progress when the widget appears
-    this.addListenerOnce("appear", this._draw, this);
+    this.addListenerOnce("appear", this.draw, this);
   },
 
   properties: {
     progress: {
       check: "Number",
       init: 0,
-      apply: "_applyProgress"
+      apply: "applyProgress"
     }
   },
 
   members: {
-    __progress: null,
+    progress: null,
 
     _createContentElement: function() {
       let canvas = new qx.html.Element("canvas");
       return canvas;
     },
 
-    _applyProgress: function(value) {
-      this.__progress = value;
-      this._draw();
+    applyProgress: function(value) {
+      this.progress = value;
+      this.draw();
     },
 
-    _draw: function() {
+    draw: function() {
       let canvas = this.getContentElement().getDomElement();
       let context = canvas.getContext("2d");
 
@@ -1070,7 +1036,7 @@ qx.Class.define("myapp.CircularProgress", {
         height / 2,
         radius,
         -Math.PI / 2,
-        -Math.PI / 2 + 2 * Math.PI * this.__progress,
+        -Math.PI / 2 + 2 * Math.PI * this.progress,
         false
       );
       context.closePath();
@@ -1083,13 +1049,11 @@ qx.Class.define("myapp.CircularProgress", {
 function startXmitProgressDisplay(commsDelay, parentContainer, size, onDone)
 {
   console.log("starting Xmit display for " + commsDelay);
-  // Create the circular progress widget
   let circularProgress = new myapp.CircularProgress();
   circularProgress.setWidth(size);
   circularProgress.setHeight(size);
   parentContainer.add(circularProgress);
 
-  // do progress updates
   const totalUpdates = 100;
   let progress = 0;
   let timer = new qx.event.Timer(Math.round(commsDelay * 1000 / totalUpdates)); // update every 1/100 of the commsDelay
@@ -1099,7 +1063,6 @@ function startXmitProgressDisplay(commsDelay, parentContainer, size, onDone)
     if (progress > 1) 
     {
       timer.stop();
-      //parentContainer.remove(circularProgress);
       if (onDone) onDone(parentContainer);
     }
     circularProgress.setProgress(progress);
@@ -1113,7 +1076,7 @@ function startXmitProgressDisplay(commsDelay, parentContainer, size, onDone)
 
 
 /*
-_createBtn : function ( txt, clr, width, cb, ctx )  {
+createBtn : function ( txt, clr, width, cb, ctx )  {
   var btn = new qx.ui.form.Button ( "<b style='color: white'>" + txt + "</b>" );
   btn.set ( { width: width, cursor: 'pointer' } );
   let lbl = btn.getChildControl ( "label" );
