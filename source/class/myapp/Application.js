@@ -2,9 +2,16 @@
     //fix reports to start animations on reentry, like chat
     //fix SolNum calculation
     //for testing purposes, allow initial SolNum to be set in config.json
-    reorg code, especially in App class (do as separate checkin)
+    //reorg code, especially in App class (do as separate checkin)
     //futz with chat scroll
+    //basic multi-luser testing
+    server should only deliver reports after they have finished transmission, otherwise the client has to hold multiple versions 
+    of the report (but the server has to hold multiple versions anyawy)
+    rockal time
+    different roles
+    view old reports
     talk to Sean!
+    small Mars/Earth planet icons
 */
 
 //const JSZip = require('jszip');
@@ -90,7 +97,7 @@ function newIM(content, user, commsDelay)
   return that;
 }
 
-
+let app = null;
 
 /**
  * This is the main application class of "myapp"
@@ -106,6 +113,7 @@ qx.Class.define("myapp.Application",
     isLoggedIn: false,
     username: null,
     token: 0,
+    planet: null,
     loginButton: null,
     solNum: 0,
     sol: null,
@@ -120,6 +128,7 @@ qx.Class.define("myapp.Application",
     {
       super.main();
       const that = this; // "this" won't work inside the setTimeout callback
+      app = this;
 
       // Enable logging in debug variant
       if (qx.core.Environment.get("qx.debug"))
@@ -131,7 +140,7 @@ qx.Class.define("myapp.Application",
       }
 
       this.commsDelay = await this.recvCommsDelay();
-      this.startDate    = new Date(await this.recvStartDate());
+      this.startDate = new Date(await this.recvStartDate());
       this.startDay = daysSinceEpoch(this.startDate);
       console.log("commsDelay=" + this.commsDelay + ", startDay=" + this.startDay + ", startDate=" + this.startDate);
 
@@ -144,6 +153,7 @@ qx.Class.define("myapp.Application",
       topPanel.setPadding(10);
       topPanel.setDecorator("main");
       mainContainer.add(topPanel);
+      this.topPanel = topPanel;
 
       const mcLabel = makeLabel(topPanel, "MarsComm", "blue", 24);
       topPanel.add(new qx.ui.core.Spacer(), { flex: 1 });
@@ -184,8 +194,29 @@ qx.Class.define("myapp.Application",
       this.loginButton = makeButton(topPanel, "Login", () => this.handleLoginLogout(), "#ffcccc", 16);
 
       await this.attemptLogin("matts", "yo"); //TODO: remove autologin before release
-      await this.changeSol(this, 0);
+      await this.changeSol(this, getCurrentSolNum(this.startDay));
       this.checkTransmissions();
+
+      const eventSource = new EventSource('http://localhost:8081/events');
+      eventSource.onmessage = function(event) 
+      {
+        console.log("SSE received!!!!");
+        console.log(event.data);
+        const obj = JSON.parse(event.data);
+        if (app.isCurrentSol() && obj.user !== app.username) // ignore new messages if we aren't looking at the current Sol, or they they are coming from us 
+          if (obj.type === "IM")
+          {
+            obj.xmitTime = new Date(obj.xmitTime); // ALWAYS have to fix the faruking date.  ALWAYS
+            app.chatUI.addIM(obj);
+            app.chatUI.ims.push(obj);
+          }
+          else if (obj.type === "Report")
+          {
+            obj.xmitTime = new Date(obj.xmitTime); // ALWAYS have to fix the faruking date.  ALWAYS
+            app.getReportUIbyName(obj.name). reportUI.addIM(obj);
+            app.chatUI..push(obj);
+          }
+      }
     },
 
     sleep(ms) { return new Promise((resolve) => { setTimeout(resolve, ms); }); },
@@ -233,6 +264,7 @@ qx.Class.define("myapp.Application",
     },
 
     getUiSolNum() { return this.solNum; },
+    isCurrentSol() { return getCurrentSolNum(this.startDay) === this.solNum },
 
     async changeSol(that, solNum) 
     { 
@@ -321,7 +353,7 @@ qx.Class.define("myapp.Application",
       if (endpoint !== 'login')
       {
         body.username = this.username;
-        body.token = "Boken";
+        body.token = this.token;
       }
       console.log("POSTality: " + JSON.stringify(body));
       try 
@@ -366,8 +398,8 @@ qx.Class.define("myapp.Application",
       {
         reportName: report.name,
         content: report.content, // fileContent,
-        username: "matts",
-        token: "Boken"
+        //username: "matts",
+        //token: "Boken"
       };
       this.doPOST('reports/update', body);
     },
@@ -376,8 +408,8 @@ qx.Class.define("myapp.Application",
     {
       const body = 
       {
-        username: "matts",
-        token: "Boken"
+        //username: "matts",
+        //token: "Boken"
       };
       this.doPOST('reports/transmit/' + report.name, body);
     },
@@ -422,7 +454,7 @@ qx.Class.define("myapp.Application",
     openLoginDialog() 
     {
       let loginDialog = new qx.ui.window.Window("Login");
-      loginDialog._setLayout(new qx.ui.layout.VBox(10));
+      loginDialog.setLayout(new qx.ui.layout.VBox(10));
       loginDialog.setModal(true);
       loginDialog.setShowMinimize(false);
       loginDialog.setShowMaximize(false);
@@ -460,13 +492,19 @@ qx.Class.define("myapp.Application",
         this.isLoggedIn = true;
         this.username = username;
         this.token = result.token;
-        this.loginButton.setLabel(username);
+        this.planet = result.planet;
+        this.loginButton.setLabel(username + '[' + result.planet + ']');
         //this.__loginButton.setBackgroundColor("#ccccff");
-        setBGColor ( this.loginButton, "#ccccff" );
+        setBGColor(this.loginButton, "#ccccff");
+        const tpcolor = result.planet === "Mars" ? "#ffeeee" : "#eeeeff";
+        this.topPanel.setBackgroundColor(tpcolor);
+
         if (loginDialog) loginDialog.close();
-      } else {
-        alert("Invalid username or password");
-      }
+      } 
+      else if (result.message)
+        alert(result.message);
+      else 
+        alert("Login failure");
 
     },
 
@@ -475,7 +513,7 @@ qx.Class.define("myapp.Application",
       this.isLoggedIn = false;
       this.username = null;
       this.loginButton.setLabel("Login");
-      this.loginButton.setBackgroundColor("#ffcccc");
+      setBGColor(this.loginButton, "#ffcccc");
       // Add any additional logout logic here
     },
 
@@ -593,19 +631,30 @@ qx.Class.define("myapp.ChatUI",
     {
       console.log("addIM: " + im.content);
       if (!im.content) return;
-      let container = new qx.ui.container.Composite(new qx.ui.layout.HBox(10));
-  
-      const str = '<b>' + im.user + '</b> <font size="-2">' + (new Date()).toString() + ':</font><br>' + im.content + '<br> <br>';
-      const label = new qx.ui.basic.Label().set( { value: str, rich: true });
-      const color = (im.user === this.network.username) ? "blue" : "black";
-      label.setTextColor(color);
-      label.setFont(new qx.bom.Font(16, ["Arial"]));
-      container.add(label);  
-      //if (inTransit(im)) console.log("  still in transit!")
-      //else console.log("time since sent is " + timeSinceSent(im.xmitTime));
-      if (inTransit(im, this.commsDelay)) 
-        startXmitProgressDisplay(this.commsDelay - timeInTransit(im), container, 55);
-      this.chatPanel.add(container);
+
+      console.log("  commsDelay=" + this.commsDelay + ", tit=" + timeInTransit(im));
+      const timeRemaining = this.commsDelay - timeInTransit(im);
+      if (im.planet === this.planet || !inTransit(im, this.commsDelay))
+      {
+        let container = new qx.ui.container.Composite(new qx.ui.layout.HBox(10));
+    
+        const str = '<b>' + im.user + '</b> <font size="-2">' + (new Date()).toString() + ':</font><br>' + im.content + '<br> <br>';
+        const label = new qx.ui.basic.Label().set( { value: str, rich: true });
+        const color = (im.user === this.network.username) ? "blue" : "black";
+        label.setTextColor(color);
+        label.setFont(new qx.bom.Font(16, ["Arial"]));
+        container.add(label);  
+        //if (inTransit(im)) console.log("  still in transit!")
+        //else console.log("time since sent is " + timeSinceSent(im.xmitTime));
+        if (inTransit(im, this.commsDelay)) 
+          startXmitProgressDisplay(timeRemaining, container, 55);
+        this.chatPanel.add(container);
+      }
+      else
+      {
+        console.log("scheduling IM arrival in " + timeRemaining);
+        setTimeout(() => this.addIM(im), timeRemaining*1000);
+      }
     },
 
     doMessage(that) 
