@@ -5,8 +5,9 @@
     //reorg code, especially in App class (do as separate checkin)
     //futz with chat scroll
     //basic multi-luser testing
-    server should only deliver reports after they have finished transmission, otherwise the client has to hold multiple versions 
-    of the report (but the server has to hold multiple versions anyawy)
+    //server should only deliver reports after they have finished transmission, otherwise the client has to hold multiple versions 
+    //  of the report (but the server has to hold multiple versions anyawy)
+    test with 3 clients -- need to switch to a different port for FireFox to work...somehow it goes to Mongoose but Chrome goes to qooxdoo
     rockal time
     different roles
     view old reports
@@ -17,6 +18,19 @@
 //const JSZip = require('jszip');
 
 function log(str) { console.log(str); }
+
+function getQueryParams() 
+{
+  let params = {};
+  let queryString = window.location.search;
+  if (queryString) 
+  {
+    let urlParams = new URLSearchParams(queryString);
+    for (let [key, value] of urlParams.entries())
+      params[key] = value;
+  }
+  return params;
+}
 
 function commsDelayPassed(sentTime, commsDelay)
 {
@@ -193,31 +207,16 @@ qx.Class.define("myapp.Application",
       makeButton(topPanel, "Download Reports", () => this.createZipFromReports(reportUIs), "#ccccff", 16);
       this.loginButton = makeButton(topPanel, "Login", () => this.handleLoginLogout(), "#ffcccc", 16);
 
-      await this.attemptLogin("matts", "yo"); //TODO: remove autologin before release
-      await this.changeSol(this, getCurrentSolNum(this.startDay));
+      let queryParams = getQueryParams();
+      if (queryParams.user) 
+        await this.attemptLogin(queryParams.user, "yo"); //TODO: remove autologin before release
+      // Unfortunately we don't know what planet we are on until after we complete the login, and without knowing the
+      // planet we don't what to do with incoming reports.  So we can start listeners and such but they can't do shiite
+      // until the login is done.
+      //await this.changeSol(this, getCurrentSolNum(this.startDay));
       this.checkTransmissions();
 
-      const eventSource = new EventSource('http://localhost:8081/events');
-      eventSource.onmessage = function(event) 
-      {
-        console.log("SSE received!!!!");
-        console.log(event.data);
-        const obj = JSON.parse(event.data);
-        if (app.isCurrentSol() && obj.user !== app.username) // ignore new messages if we aren't looking at the current Sol, or they they are coming from us 
-          if (obj.type === "IM")
-          {
-            obj.xmitTime = new Date(obj.xmitTime); // ALWAYS have to fix the faruking date.  ALWAYS
-            app.chatUI.addIM(obj);
-            app.chatUI.ims.push(obj);
-          }
-          else if (obj.type === "Report")
-          {
-            obj.xmitTime = new Date(obj.xmitTime); // ALWAYS have to fix the faruking date.  ALWAYS
-            app.getReportUIbyName(obj.name). reportUI.addIM(obj);
-            app.chatUI..push(obj);
-          }
-      }
-    },
+    }, //-------------- end of main()
 
     sleep(ms) { return new Promise((resolve) => { setTimeout(resolve, ms); }); },
 
@@ -247,18 +246,20 @@ qx.Class.define("myapp.Application",
     syncDisplay() 
     { 
       const sol = this.sol;
-
+      console.log("this display styncs");
       this.chatUI.changeSol(sol.ims);
 
       const reportUIs = this.reportUIs;
       for (let i = 0; i < reportUIs.length; i++)
         reportUIs[i].reset();
+      console.log("reset THIS");
       for (let i = 0; i < sol.reports.length; i++)
       {
         const reportUI = this.getReportUIbyName(sol.reports[i].name);
         if (reportUI)
         { 
-          reportUI.changeSol(sol.reports[i]);
+          console.log("update ReportUI for " + sol.reports[i].name);
+          reportUI.update(sol.reports[i]);
         }
       }
     },
@@ -270,9 +271,10 @@ qx.Class.define("myapp.Application",
     { 
       console.log("time THIS: " + solNum);
       that.solNum = solNum;
-      console.log("Sol set to " + that.solNum);
+      console.log("Sol supposedly set to " + that.solNum);
       const sol = await that.recvSol(solNum);
-      console.log(sol); 
+      //console.log(sol); 
+      console.log("got some Sol...time to stync");
       that.sol = sol;
       that.syncDisplay();
     },    
@@ -417,10 +419,13 @@ qx.Class.define("myapp.Application",
     async recvSol(solNum) 
     { 
       const sol = await this.doGET('sols/' + solNum);
+      console.log("solabaloni");
+      sol.reports = (this.planet === "Earth") ? sol.reportsEarth : sol.reportsMars;
       for (let i = 0; i < sol.ims.length; i++)
         sol.ims[i].xmitTime = new Date(sol.ims[i].xmitTime);
       for (let i = 0; i < sol.reports.length; i++)
         sol.reports[i].xmitTime = new Date(sol.reports[i].xmitTime);
+      console.log("solaroni");
       return sol; 
     },
 
@@ -500,6 +505,29 @@ qx.Class.define("myapp.Application",
         this.topPanel.setBackgroundColor(tpcolor);
 
         if (loginDialog) loginDialog.close();
+        // now that we're logged in we can finish the startup
+        await this.changeSol(this, getCurrentSolNum(this.startDay));
+
+        // eventSource is tied to login because the planet can change
+        this.eventSource = new EventSource('http://localhost:8081/events/' + this.planet);
+        this.eventSource.onmessage = function(event) 
+        {
+          console.log("SSE received!!!!");
+          console.log(event.data);
+          const obj = JSON.parse(event.data);
+          if (app.isCurrentSol() && obj.user !== app.username) // ignore new messages if we aren't looking at the current Sol, or they they are coming from us 
+            if (obj.type === "IM")
+            {
+              obj.xmitTime = new Date(obj.xmitTime); // ALWAYS have to fix the faruking date.  ALWAYS
+              app.chatUI.addIM(obj);
+              app.chatUI.ims.push(obj);
+            }
+            else if (obj.type === "Report")
+            {
+              obj.xmitTime = new Date(obj.xmitTime); // ALWAYS have to fix the faruking date.  ALWAYS
+              app.getReportUIbyName(obj.name).update(obj);
+            }
+        }
       } 
       else if (result.message)
         alert(result.message);
@@ -510,6 +538,8 @@ qx.Class.define("myapp.Application",
 
     logout() 
     {
+      this.eventSource.close();
+      this.eventSource = null;
       this.isLoggedIn = false;
       this.username = null;
       this.loginButton.setLabel("Login");
@@ -704,6 +734,32 @@ qx.Class.define("myapp.ChatUI",
   }
 });
 
+/* What exactly does it mean to transmit an IM or report? The design for these two types of objects
+is different, for some intrinsic reasons.  IMs are simpler because there aren't multiple versions -- 
+an IM is either transmitted or it isn't, and IMs are automatically transmitted when created/"sent".
+Therefore, it is simple to make all clients see all IMs, and simply not show those that originate 
+from a different planet and haven't been received.
+
+The IM solution unfortunately doesn't work for Reports, which can be altered even after being 
+transmitted, and can then be re-transmitted.  That means that there can be several versions of a
+report floating around -- each planet has its own current version (which may be the same or 
+different from the other planet), and in addition there can be one or more versions in transit.
+
+After some consideration, going to try the following scheme: each planet has a single current
+version that is either the latest version or the latest received version.  In addition there is a
+queue of versions that have been transmitted but not received.  Either the server or the client
+could manage that, but going to try first with the server.  Actually it is hard to avoid using the
+server because a new client could appear at any time so the full state needs to be on the server.
+It's somewhat unlike the solution for IMs, but it is more authentic and perhaps simpler.
+
+On the server, the "current" Reports (both Earth and Mars) are never created (except at server 
+startup) or destroyed.  Reports in transit *are* created and destroyed, and their contents are
+copied on arrival.
+
+When a report is updated, it is immediately sent by SSE to other clients on the same planet.
+When a report is transmitted, a copy is made and put in a queue while on the way to the other
+planet.  After it arrives, the current version for the other planet is updated. 
+*/
 
 qx.Class.define("myapp.ReportUI", 
 { extend: qx.core.Object, 
@@ -801,7 +857,7 @@ qx.Class.define("myapp.ReportUI",
       this.realizeState();
     },
 
-    changeSol(report) 
+    update(report) // called when the SolNum is changed, and when a transmitted Report arrives 
     { //  instead of copying state out, we need to keep a reference to the report so that we can later update it e.g. when the xmit button is pressed
       if (report.transmitted) console.log("changeSol => new report incoming: " + report.name);
       this.report = report;
