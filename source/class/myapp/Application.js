@@ -1,10 +1,11 @@
 /* TODO
     //different roles...but what should be different?
-    //small Mars/Earth planet icons...do only after suckcessfoolly accepted, as this is pure sizzle
     //test with 3 clients -- need to switch to a different port for FireFox to work...somehow it goes to Mongoose but Chrome goes to qooxdoo
     //rockal time
     //view old reports
     talk to Sean!
+    deferred: fix support for Report images
+    deferred: small Mars/Earth planet icons...do only after suckcessfoolly accepted, as this is pure sizzle
 */
 
 //const JSZip = require('jszip');
@@ -40,7 +41,7 @@ function commsDelayPassed(sentTime)
 {
   if (!(sentTime instanceof Date)) sentTime = new Date(sentTime);
   const now = new Date();
-  console.log("CDPlease: " + ((now - sentTime) / 1000) + ", commsDelay: " + commsDelay + ", CDP ret: " + ((now - sentTime) / 1000 > commsDelay));
+  //console.log("CDPlease: " + ((now - sentTime) / 1000) + ", commsDelay: " + commsDelay + ", CDP ret: " + ((now - sentTime) / 1000 > commsDelay));
   return ((now - sentTime) / 1000 > commsDelay);
 }
 
@@ -212,7 +213,7 @@ qx.Class.define("myapp.Application",
       // planet we don't what to do with incoming reports.  So we can start listeners and such but they can't do shiite
       // until the login is done.
       //await this.changeSol(this, getCurrentSolNum(this.startDay));
-      this.checkTransmissions();
+      //this.checkTransmissions(); // should no longer be needed
 
     }, //-------------- end of main()
 
@@ -267,12 +268,10 @@ qx.Class.define("myapp.Application",
 
     async changeSol(that, solNum) 
     { 
-      console.log("time THIS: " + solNum);
       that.solNum = solNum;
       console.log("Sol supposedly set to " + that.solNum);
       const sol = await that.recvSol(solNum);
       //console.log(sol); 
-      console.log("got some Sol...time to stync");
       that.sol = sol;
       that.syncDisplay();
     },    
@@ -417,13 +416,11 @@ qx.Class.define("myapp.Application",
     async recvSol(solNum) 
     { 
       const sol = await this.doGET('sols/' + solNum);
-      console.log("solabaloni");
       sol.reports = (planet === "Earth") ? sol.reportsEarth : sol.reportsMars;
       for (let i = 0; i < sol.ims.length; i++)
         sol.ims[i].xmitTime = new Date(sol.ims[i].xmitTime);
       for (let i = 0; i < sol.reports.length; i++)
         sol.reports[i].xmitTime = new Date(sol.reports[i].xmitTime);
-      console.log("solaroni");
       return sol; 
     },
 
@@ -767,9 +764,9 @@ qx.Class.define("myapp.ReportUI",
     parentContainer.add(container);
     this.container = container;
 
-    let icon = new qx.ui.basic.Image("icon/22/actions/document-open.png");
-    container.add(icon);
-    this.icon = icon;
+    //let icon = new qx.ui.basic.Image("icon/22/actions/document-open.png");
+    //container.add(icon);
+    //this.icon = icon;
 
     let fsb = new qx.ui.form.FileSelectorButton("Upload...");
     fsb.addListener("changeFileSelection", function(e) 
@@ -875,7 +872,7 @@ qx.Class.define("myapp.ReportUI",
       if (this.report && this.report.transmitted) console.log("realizing new state: " + this.state + ", isCurrentSol=" + isCurrentSol);
       const editEnabled = this.state !== "Unused"; // && isCurrentSol; // edit button now works in View mode for non-current Sols
       const editBgColor = editEnabled ? "#ccccff" : "#cccccc";
-      const txEnabled = editEnabled && this.state !== "Empty";
+      const txEnabled = isCurrentSol && editEnabled && this.state !== "Empty";
       const txBgColor = txEnabled ? "#ccccff" : "#cccccc";
       if (this.fsButton)   {   this.fsButton.setEnabled(editEnabled); setBGColor(this.fsButton, editBgColor); }
       if (this.editButton) { this.editButton.setEnabled(editEnabled); setBGColor(this.editButton, editBgColor); }
@@ -962,7 +959,6 @@ qx.Class.define("myapp.CKEditor",
     initCKEditor: function() 
     {
       // Initialize CKEditor with the unique ID
-      console.log("init dat bitch");
       let editorElement = document.getElementById(this.editorId);
       this.editor = CKEDITOR.replace(editorElement, { height: '100%', versionCheck: false } );
 
@@ -972,8 +968,7 @@ qx.Class.define("myapp.CKEditor",
         if (this.afterInit) this.afterInit(); 
         this.editor.focus();
         this.updateEditorHeight();
-        console.log("post init fun"); 
-      }, this, 300);
+      }, this, 600);
     },
 
     onResize: function() { this.updateEditorHeight(); },
@@ -1023,7 +1018,7 @@ qx.Class.define("myapp.CKEditorWindow",
     this.parent = parent;
     console.log("new editor with content " + content);
     // Add the CKEditor to the window and set content after the editor is actually created
-    const ckEditor = new myapp.CKEditor(function () { console.log("set dat shiite"); ckEditor.setContent(content); });
+    const ckEditor = new myapp.CKEditor(function () { ckEditor.setContent(content); });
     this.ckEditor = ckEditor;
     this.add(this.ckEditor);
 
