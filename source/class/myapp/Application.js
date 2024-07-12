@@ -1,7 +1,7 @@
 /* TODO
     //different roles...but what should be different?
     //small Mars/Earth planet icons...do only after suckcessfoolly accepted, as this is pure sizzle
-    test with 3 clients -- need to switch to a different port for FireFox to work...somehow it goes to Mongoose but Chrome goes to qooxdoo
+    //test with 3 clients -- need to switch to a different port for FireFox to work...somehow it goes to Mongoose but Chrome goes to qooxdoo
     //rockal time
     //view old reports
     talk to Sean!
@@ -25,6 +25,10 @@ function getQueryParams()
 }
 
 let refDate = null;
+let commsDelay = 0;
+let username = null;
+let planet = null;
+let app = null;
 
 function getSolNum(date) 
 {
@@ -32,11 +36,11 @@ function getSolNum(date)
   return Math.floor((date.getTime() - refDate.getTime()) / (1000 * 60 * 60 * 24)); 
 }
 
-function commsDelayPassed(sentTime, commsDelay)
+function commsDelayPassed(sentTime)
 {
   if (!(sentTime instanceof Date)) sentTime = new Date(sentTime);
   const now = new Date();
-  //console.log("CDPlease: " + ((now - sentTime) / 1000) + ", commsDelay: " + commsDelay + ", CDP ret: " + ((now - sentTime) / 1000 > commsDelay));
+  console.log("CDPlease: " + ((now - sentTime) / 1000) + ", commsDelay: " + commsDelay + ", CDP ret: " + ((now - sentTime) / 1000 > commsDelay));
   return ((now - sentTime) / 1000 > commsDelay);
 }
 
@@ -47,7 +51,7 @@ function timeSinceSent(sentTime)
   return (now - sentTime) / 1000;  
 }
 
-function inTransit(obj, commsDelay) 
+function inTransit(obj) 
 { 
   const cdp = commsDelayPassed(obj.xmitTime, commsDelay);
   //console.log("in transit? " + obj.xmitTime.toString() + " vs " + (new Date()).toString() + " CDP " + cdp);
@@ -93,21 +97,21 @@ function makeLabel(container, str, color, fontSize)
   return label;
 }
 
-function newIM(content, user, commsDelay)
+function newIM(content)
 {
 	let that = { };
 
   that.content = content;
-  that.user = user;
+  that.user = username;
+  that.planet = planet;
   that.xmitTime = new Date();
   that.transmitted = true; // IMs are automatically transmitted
 
-  that.received = function () { return commsDelayPassed(that.xmitTime, commsDelay); }
+  that.received = function () { return commsDelayPassed(that.xmitTime); }
   
   return that;
 }
 
-let app = null;
 
 /**
  * This is the main application class of "myapp"
@@ -121,13 +125,10 @@ qx.Class.define("myapp.Application",
   members:
   {
     isLoggedIn: false,
-    username: null,
     token: 0,
-    planet: null,
     loginButton: null,
     solNum: 0,
     sol: null,
-    commsDelay: 0,
     reportUIs: null,
     chatUI: null,
 
@@ -148,12 +149,12 @@ qx.Class.define("myapp.Application",
         qx.log.appender.Console;
       }
 
-      this.commsDelay = await this.recvCommsDelay();
+      commsDelay = await this.recvCommsDelay();
       refDate = new Date(await this.recvRefDate());
       this.refDate = refDate;
       //this.startDay = daysSinceRef(this.startDate);
       //console.log("commsDelay=" + this.commsDelay + ", startDay=" + this.startDay + ", startDate=" + this.startDate);
-      console.log("commsDelay=" + this.commsDelay + ", refDate=" + this.refDate);
+      console.log("commsDelay=" + commsDelay + ", refDate=" + this.refDate);
 
       // Create the main layout
       let doc = this.getRoot();
@@ -184,7 +185,7 @@ qx.Class.define("myapp.Application",
       let middleContainer = new qx.ui.container.Composite(new qx.ui.layout.HBox());
       middleContainer.setDecorator("main");
       mainContainer.add(middleContainer, { flex: 1 });
-      this.chatUI = new myapp.ChatUI(middleContainer, this.commsDelay, this);
+      this.chatUI = new myapp.ChatUI(middleContainer, this);
 
       let rightPanel = new qx.ui.container.Composite(new qx.ui.layout.VBox(10));
       rightPanel.setPadding(10);
@@ -196,7 +197,7 @@ qx.Class.define("myapp.Application",
       console.log(reportNames);
       reportNames.forEach((name, index) => 
       {
-        let reportUI = new myapp.ReportUI(name, rightPanel, this.commsDelay, this);
+        let reportUI = new myapp.ReportUI(name, rightPanel, this);
         reportUIs.push(reportUI);
       });
       this.reportUIs = reportUIs;
@@ -351,7 +352,7 @@ qx.Class.define("myapp.Application",
     {
       if (endpoint !== 'login')
       {
-        body.username = this.username;
+        body.username = username;
         body.token = this.token;
       }
       console.log("POSTality: " + JSON.stringify(body));
@@ -417,7 +418,7 @@ qx.Class.define("myapp.Application",
     { 
       const sol = await this.doGET('sols/' + solNum);
       console.log("solabaloni");
-      sol.reports = (this.planet === "Earth") ? sol.reportsEarth : sol.reportsMars;
+      sol.reports = (planet === "Earth") ? sol.reportsEarth : sol.reportsMars;
       for (let i = 0; i < sol.ims.length; i++)
         sol.ims[i].xmitTime = new Date(sol.ims[i].xmitTime);
       for (let i = 0; i < sol.reports.length; i++)
@@ -486,33 +487,34 @@ qx.Class.define("myapp.Application",
       loginDialog.open();
     },
 
-    async attemptLogin(username, password, loginDialog) 
+    async attemptLogin(usernameIn, password, loginDialog) 
     {
-      const result = await this.sendLogin(username, password);
+      const result = await this.sendLogin(usernameIn, password);
       if (result.token)
       {
         this.isLoggedIn = true;
-        this.username = username;
+        username = usernameIn;
+        planet = result.planet;
         this.token = result.token;
-        this.planet = result.planet;
-        this.loginButton.setLabel(username + '[' + result.planet + ']');
+        this.loginButton.setLabel(username + '[' + planet + ']');
         //this.__loginButton.setBackgroundColor("#ccccff");
         setBGColor(this.loginButton, "#ccccff");
-        const tpcolor = result.planet === "Mars" ? "#ffeeee" : "#eeeeff";
+        const tpcolor = planet === "Mars" ? "#ffeeee" : "#eeeeff";
         this.topPanel.setBackgroundColor(tpcolor);
 
         if (loginDialog) loginDialog.close();
         // now that we're logged in we can finish the startup
         await this.changeSol(this, getSolNum());
 
+        // set up server-sent events
         // eventSource is tied to login because the planet can change
-        this.eventSource = new EventSource('http://localhost:8081/events/' + this.planet);
+        this.eventSource = new EventSource('http://localhost:8081/events/' + planet);
         this.eventSource.onmessage = function(event) 
         {
           console.log("SSE received!!!!");
           console.log(event.data);
           const obj = JSON.parse(event.data);
-          if (app.isCurrentSol() && obj.user !== app.username) // ignore new messages if we aren't looking at the current Sol, or they they are coming from us 
+          if (app.isCurrentSol() /* && obj.user !== username */) // ignore new messages if we aren't looking at the current Sol, or they they are coming from us 
             if (obj.type === "IM")
             {
               obj.xmitTime = new Date(obj.xmitTime); // ALWAYS have to fix the faruking date.  ALWAYS
@@ -538,7 +540,8 @@ qx.Class.define("myapp.Application",
       this.eventSource.close();
       this.eventSource = null;
       this.isLoggedIn = false;
-      this.username = null;
+      username = null;
+      planet = null;
       this.loginButton.setLabel("Login");
       setBGColor(this.loginButton, "#ffcccc");
       // Add any additional logout logic here
@@ -589,11 +592,9 @@ qx.Class.define("myapp.Application",
 
 qx.Class.define("myapp.ChatUI", 
 { extend: qx.core.Object, 
-  construct: function(parentContainer, commsDelay, network) 
+  construct: function(parentContainer) 
   {
     const that = this;
-    this.commsDelay = commsDelay;
-    this.network = network;
 
     let chatContainer = new qx.ui.container.Composite(new qx.ui.layout.VBox());
     chatContainer.setDecorator("main");
@@ -635,18 +636,16 @@ qx.Class.define("myapp.ChatUI",
   members: 
   {
     chatPanel: null,
-    commsDelay: 0,
-    network: null,
 
     reset() { try { this.chatPanel.removeAll(); } catch (e) { console.log("clean et up"); } this.ims = null; },
 
     changeSol(ims)
     {
-      console.log("changing Sol to " + this.network.getUiSolNum() + "; update dat chat wit " + ims.length + " ims");
+      console.log("changing Sol to " + app.getUiSolNum() + "; update dat chat wit " + ims.length + " ims");
       console.log("currentSolNum is " + getSolNum());
       this.reset();
       this.ims = ims;
-      const isCurrentSol = getSolNum() === this.network.getUiSolNum();
+      const isCurrentSol = getSolNum() === app.getUiSolNum();
       this.chatInput.setEnabled(isCurrentSol);
       for (let i = 0; i < ims.length; i++)
         this.addIM(ims[i]);
@@ -654,28 +653,28 @@ qx.Class.define("myapp.ChatUI",
 
     addIM(im)
     {
-      console.log("addIM: " + im.content);
+      console.log("addIM: " + im.content + " from planet " + im.planet + " (we are on " + planet + ")");
       if (!im.content) return;
 
-      console.log("  commsDelay=" + this.commsDelay + ", tit=" + timeInTransit(im));
-      const timeRemaining = this.commsDelay - timeInTransit(im);
-      if (im.planet === this.planet || !inTransit(im, this.commsDelay))
+      console.log("  commsDelay=" + commsDelay + ", tit=" + timeInTransit(im));
+      const timeRemaining = commsDelay - timeInTransit(im);
+      if (im.planet === planet || !inTransit(im))
       {
         let container = new qx.ui.container.Composite(new qx.ui.layout.HBox(10));
     
         const str = '<b>' + im.user + '</b> <font size="-2">' + (new Date()).toString() + ':</font><br>' + im.content + '<br> <br>';
         const label = new qx.ui.basic.Label().set( { value: str, rich: true });
-        const color = (im.user === this.network.username) ? "blue" : "black";
+        const color = (im.user === username) ? "blue" : "black";
         label.setTextColor(color);
         label.setFont(new qx.bom.Font(16, ["Arial"]));
         container.add(label);  
         //if (inTransit(im)) console.log("  still in transit!")
         //else console.log("time since sent is " + timeSinceSent(im.xmitTime));
-        if (inTransit(im, this.commsDelay)) 
+        if (inTransit(im)) 
           startXmitProgressDisplay(timeRemaining, container, 55);
         this.chatPanel.add(container);
       }
-      else
+      else // IM is NOT from this planet and has not yet arrived, so wait for et
       {
         console.log("scheduling IM arrival in " + timeRemaining);
         setTimeout(() => this.addIM(im), timeRemaining*1000);
@@ -697,11 +696,11 @@ qx.Class.define("myapp.ChatUI",
       that.chatInput.setValue("");
       // Simple markdown and emoticon parsing
       let formattedMessage = that.parseMessage(message);
-      const im = newIM(formattedMessage, that.network.username, that.commsDelay);
+      const im = newIM(formattedMessage);
       console.log(im);
-      that.addIM(im);           // add IM to chatPanel
+      //that.addIM(im);           // add IM to chatPanel; don't need to add locally as we'll add it on the SSE
       that.ims.push(im);        // add IM to local model
-      that.network.sendIM(im); // send IM to server
+      app.sendIM(im); // send IM to server
     },
 
     doMessages(that)
@@ -758,13 +757,11 @@ planet.  After it arrives, the current version for the other planet is updated.
 
 qx.Class.define("myapp.ReportUI", 
 { extend: qx.core.Object, 
-  construct: function(name, parentContainer, commsDelay, network) 
+  construct: function(name, parentContainer) 
   {
     const that = this;
     this.base(arguments); // Call superclass constructor
     this.name = name;
-    this.commsDelay = commsDelay;
-    this.network = network;
 
     let container = new qx.ui.container.Composite(new qx.ui.layout.HBox(10));
     parentContainer.add(container);
@@ -807,8 +804,8 @@ qx.Class.define("myapp.ReportUI",
     { 
       that.report.transmitted = true;
       that.report.xmitTime = new Date();
-      that.network.transmitReport(that.report); // tell server to send report to Earth
-      that.realizeState("Transmitted"); 
+      app.transmitReport(that.report); // tell server to send report to other planet
+      //that.realizeState("Transmitted"); // SSE will cause UI to be updated
     }
     this.txButton = makeButton(container, "Transmit", onXmit, "gray", 14);
     this.txButton.setEnabled(false);
@@ -819,8 +816,6 @@ qx.Class.define("myapp.ReportUI",
   members: 
   {
     name: null,
-    network: null,
-    commsDelay: 0,
 
     container: null,
     icon: null,
@@ -847,8 +842,8 @@ qx.Class.define("myapp.ReportUI",
     onChange() 
     { 
       console.log("something changed, Holmez");
-      this.network.sendReport(this.report);
-      this.realizeState();
+      app.sendReport(this.report);
+      //this.realizeState(); // SSE will cause UI to be updated
     },
 
     update(report) // called when the SolNum is changed, and when a transmitted Report arrives 
@@ -859,14 +854,14 @@ qx.Class.define("myapp.ReportUI",
       this.realizeState();
     },
 
-    isCurrentSol() { return getSolNum() === this.network.getUiSolNum() },
+    isCurrentSol() { return getSolNum() === app.getUiSolNum() },
 
     computeState()
     {
       if (this.report.transmitted) console.log("compute THIS: " + JSON.stringify(this.report));
       if (this.report.transmitted) console.log("transmitted..." + this.report.xmitTime.toString() + " " + commsDelayPassed(this.report.xmitTime, this.commsDelay));
       if (this.report.transmitted) 
-        if (commsDelayPassed(this.report.xmitTime, this.commsDelay)) return "Received";
+        if (commsDelayPassed(this.report.xmitTime)) return "Received";
         else return "Transmitted";
 
       if (this.report.content) return "Populated";
@@ -897,8 +892,8 @@ qx.Class.define("myapp.ReportUI",
       else if (this.state === "Received")    color = "green";
       if (this.label) this.label.setTextColor(color);
 
-      if (this.state === "Transmitted" && this.report && inTransit(this.report, this.commsDelay)) 
-        this.xmitProgress = startXmitProgressDisplay(this.commsDelay, this.container, 33, (container) => this.xmitDone(container));
+      if (this.state === "Transmitted" && this.report && inTransit(this.report)) 
+        this.xmitProgress = startXmitProgressDisplay(commsDelay, this.container, 33, (container) => this.xmitDone(container));
     },
 
     openReportEditor()
@@ -920,8 +915,8 @@ qx.Class.define("myapp.ReportUI",
 
     checkTransmission()
     {
-      if (this.state === "Transmitted") console.log(commsDelayPassed(this.report.xmitTime, this.commsDelay));
-      if (this.state === "Transmitted" && commsDelayPassed(this.report.xmitTime, this.commsDelay)) 
+      if (this.state === "Transmitted") console.log(commsDelayPassed(this.report.xmitTime));
+      if (this.state === "Transmitted" && commsDelayPassed(this.report.xmitTime)) 
       {
         console.log("comms delay has passed for " + this.name)
         this.realizeState("Received");
