@@ -1,18 +1,10 @@
 /* TODO
-    //fix reports to start animations on reentry, like chat
-    //fix SolNum calculation
-    //for testing purposes, allow initial SolNum to be set in config.json
-    //reorg code, especially in App class (do as separate checkin)
-    //futz with chat scroll
-    //basic multi-luser testing
-    //server should only deliver reports after they have finished transmission, otherwise the client has to hold multiple versions 
-    //  of the report (but the server has to hold multiple versions anyawy)
+    //different roles...but what should be different?
+    //small Mars/Earth planet icons...do only after suckcessfoolly accepted, as this is pure sizzle
     test with 3 clients -- need to switch to a different port for FireFox to work...somehow it goes to Mongoose but Chrome goes to qooxdoo
-    rockal time
-    different roles
-    view old reports
+    //rockal time
+    //view old reports
     talk to Sean!
-    small Mars/Earth planet icons
 */
 
 //const JSZip = require('jszip');
@@ -32,6 +24,14 @@ function getQueryParams()
   return params;
 }
 
+let refDate = null;
+
+function getSolNum(date) 
+{
+  if (!date) date = new Date(); 
+  return Math.floor((date.getTime() - refDate.getTime()) / (1000 * 60 * 60 * 24)); 
+}
+
 function commsDelayPassed(sentTime, commsDelay)
 {
   if (!(sentTime instanceof Date)) sentTime = new Date(sentTime);
@@ -46,10 +46,6 @@ function timeSinceSent(sentTime)
   const now = new Date();
   return (now - sentTime) / 1000;  
 }
-
-function daysSinceEpoch(date) { return Math.floor(date.getTime() / (1000 * 60 * 60 * 24)); }
-
-function getCurrentSolNum(startDay) { return daysSinceEpoch(new Date()) - startDay; }
 
 function inTransit(obj, commsDelay) 
 { 
@@ -132,7 +128,6 @@ qx.Class.define("myapp.Application",
     solNum: 0,
     sol: null,
     commsDelay: 0,
-    startDate: null,
     reportUIs: null,
     chatUI: null,
 
@@ -154,9 +149,11 @@ qx.Class.define("myapp.Application",
       }
 
       this.commsDelay = await this.recvCommsDelay();
-      this.startDate = new Date(await this.recvStartDate());
-      this.startDay = daysSinceEpoch(this.startDate);
-      console.log("commsDelay=" + this.commsDelay + ", startDay=" + this.startDay + ", startDate=" + this.startDate);
+      refDate = new Date(await this.recvRefDate());
+      this.refDate = refDate;
+      //this.startDay = daysSinceRef(this.startDate);
+      //console.log("commsDelay=" + this.commsDelay + ", startDay=" + this.startDay + ", startDate=" + this.startDate);
+      console.log("commsDelay=" + this.commsDelay + ", refDate=" + this.refDate);
 
       // Create the main layout
       let doc = this.getRoot();
@@ -187,7 +184,7 @@ qx.Class.define("myapp.Application",
       let middleContainer = new qx.ui.container.Composite(new qx.ui.layout.HBox());
       middleContainer.setDecorator("main");
       mainContainer.add(middleContainer, { flex: 1 });
-      this.chatUI = new myapp.ChatUI(middleContainer, this.commsDelay, this, this.startDay);
+      this.chatUI = new myapp.ChatUI(middleContainer, this.commsDelay, this);
 
       let rightPanel = new qx.ui.container.Composite(new qx.ui.layout.VBox(10));
       rightPanel.setPadding(10);
@@ -199,7 +196,7 @@ qx.Class.define("myapp.Application",
       console.log(reportNames);
       reportNames.forEach((name, index) => 
       {
-        let reportUI = new myapp.ReportUI(name, rightPanel, this.commsDelay, this, this.startDay);
+        let reportUI = new myapp.ReportUI(name, rightPanel, this.commsDelay, this);
         reportUIs.push(reportUI);
       });
       this.reportUIs = reportUIs;
@@ -265,7 +262,7 @@ qx.Class.define("myapp.Application",
     },
 
     getUiSolNum() { return this.solNum; },
-    isCurrentSol() { return getCurrentSolNum(this.startDay) === this.solNum },
+    isCurrentSol() { return getSolNum() === this.solNum },
 
     async changeSol(that, solNum) 
     { 
@@ -433,7 +430,7 @@ qx.Class.define("myapp.Application",
 
     async recvCommsDelay()   { return (await this.doGET('comms-delay')).commsDelay; },
 
-    async recvStartDate()   { return (await this.doGET('start-date')).startDate; },
+    async recvRefDate()   { return (await this.doGET('ref-date')).refDate; },
 
 
     //--------------------------------------------------------------------------------------------
@@ -506,7 +503,7 @@ qx.Class.define("myapp.Application",
 
         if (loginDialog) loginDialog.close();
         // now that we're logged in we can finish the startup
-        await this.changeSol(this, getCurrentSolNum(this.startDay));
+        await this.changeSol(this, getSolNum());
 
         // eventSource is tied to login because the planet can change
         this.eventSource = new EventSource('http://localhost:8081/events/' + this.planet);
@@ -592,12 +589,11 @@ qx.Class.define("myapp.Application",
 
 qx.Class.define("myapp.ChatUI", 
 { extend: qx.core.Object, 
-  construct: function(parentContainer, commsDelay, network, startDay) 
+  construct: function(parentContainer, commsDelay, network) 
   {
     const that = this;
     this.commsDelay = commsDelay;
     this.network = network;
-    this.startDay = startDay;
 
     let chatContainer = new qx.ui.container.Composite(new qx.ui.layout.VBox());
     chatContainer.setDecorator("main");
@@ -641,17 +637,16 @@ qx.Class.define("myapp.ChatUI",
     chatPanel: null,
     commsDelay: 0,
     network: null,
-    startDay: 0,
 
     reset() { try { this.chatPanel.removeAll(); } catch (e) { console.log("clean et up"); } this.ims = null; },
 
     changeSol(ims)
     {
       console.log("changing Sol to " + this.network.getUiSolNum() + "; update dat chat wit " + ims.length + " ims");
-      console.log("currentSolNum is " + getCurrentSolNum(this.startDay));
+      console.log("currentSolNum is " + getSolNum());
       this.reset();
       this.ims = ims;
-      const isCurrentSol = getCurrentSolNum(this.startDay) === this.network.getUiSolNum();
+      const isCurrentSol = getSolNum() === this.network.getUiSolNum();
       this.chatInput.setEnabled(isCurrentSol);
       for (let i = 0; i < ims.length; i++)
         this.addIM(ims[i]);
@@ -763,14 +758,13 @@ planet.  After it arrives, the current version for the other planet is updated.
 
 qx.Class.define("myapp.ReportUI", 
 { extend: qx.core.Object, 
-  construct: function(name, parentContainer, commsDelay, network, startDay) 
+  construct: function(name, parentContainer, commsDelay, network) 
   {
     const that = this;
     this.base(arguments); // Call superclass constructor
     this.name = name;
     this.commsDelay = commsDelay;
     this.network = network;
-    this.startDay = startDay;
 
     let container = new qx.ui.container.Composite(new qx.ui.layout.HBox(10));
     parentContainer.add(container);
@@ -865,7 +859,7 @@ qx.Class.define("myapp.ReportUI",
       this.realizeState();
     },
 
-    isCurrentSol() { return getCurrentSolNum(this.startDay) === this.network.getUiSolNum() },
+    isCurrentSol() { return getSolNum() === this.network.getUiSolNum() },
 
     computeState()
     {

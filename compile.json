@@ -28,6 +28,6 @@
   ],
 
   "serve": {
-    "listenPort": 8080
+    "listenPort": 8082
   }
 }
