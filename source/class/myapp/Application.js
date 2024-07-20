@@ -3,6 +3,8 @@
     //test with 3 clients -- need to switch to a different port for FireFox to work...somehow it goes to Mongoose but Chrome goes to qooxdoo
     //rockal time
     //view old reports
+    //report templates
+    add attachment
     talk to Sean!
     deferred: fix support for Report images
     deferred: small Mars/Earth planet icons...do only after suckcessfoolly accepted, as this is pure sizzle
@@ -23,6 +25,16 @@ function getQueryParams()
       params[key] = value;
   }
   return params;
+}
+
+function arrayBufferToBase64(buffer)
+{
+  let binary = '';
+  const bytes = new Uint8Array(buffer);
+  const len = bytes.byteLength;
+  for (let i = 0; i < len; i++) 
+    binary += String.fromCharCode(bytes[i]);
+  return btoa(binary);
 }
 
 let refDate = null;
@@ -102,6 +114,7 @@ function newIM(content)
 {
 	let that = { };
 
+  that.type = "IM";
   that.content = content;
   that.user = username;
   that.planet = planet;
@@ -113,6 +126,14 @@ function newIM(content)
   return that;
 }
 
+function newAttachment(filename, content)
+{ // Attachment doesn't have it's own planet as it's on its parent Report's planet
+	var that = { };
+
+  that.type = "Attachment";
+	that.filename = filename;
+  that.content = content;
+}
 
 /**
  * This is the main application class of "myapp"
@@ -202,6 +223,8 @@ qx.Class.define("myapp.Application",
         reportUIs.push(reportUI);
       });
       this.reportUIs = reportUIs;
+
+      this.templates = await this.recvReportTemplates();
 
       makeButton(topPanel, "Download Reports", () => this.createZipFromReports(reportUIs), "#ccccff", 16);
       this.loginButton = makeButton(topPanel, "Login", () => this.handleLoginLogout(), "#ffcccc", 16);
@@ -347,8 +370,9 @@ qx.Class.define("myapp.Application",
 
     },
 
-    async doPOST(endpoint, body)
+    async doPOST(endpoint, body, contentType)
     {
+      contentType = contentType || "application/json";
       if (endpoint !== 'login')
       {
         body.username = username;
@@ -361,7 +385,7 @@ qx.Class.define("myapp.Application",
         {
           method: 'POST',
           //mode: 'no-cors', // this fixes CORS problems but introduces other problems -- DON'T USE
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': contentType },
           body: JSON.stringify(body)
         });
 
@@ -403,6 +427,18 @@ qx.Class.define("myapp.Application",
       this.doPOST('reports/update', body);
     },
 
+    async sendAttachment(reportName, filename, content)
+    {
+      const body = 
+      {
+        reportName: reportName,
+        filename: filename,
+        content: content, 
+      };
+
+      this.doPOST('reports/add-attachment', body);
+    },
+
     async transmitReport(report)
     {
       const body = 
@@ -424,12 +460,16 @@ qx.Class.define("myapp.Application",
       return sol; 
     },
 
-    async recvReports()   { return await this.doGET('reports'); },
+    async recvReports()         { return await this.doGET('reports'); },
 
-    async recvCommsDelay()   { return (await this.doGET('comms-delay')).commsDelay; },
+    async recvCommsDelay()      { return (await this.doGET('comms-delay')).commsDelay; },
 
-    async recvRefDate()   { return (await this.doGET('ref-date')).refDate; },
+    async recvRefDate()         { return (await this.doGET('ref-date')).refDate; },
 
+    async recvReportTemplates() { return await this.doGET('reports/templates'); },
+
+    async recvAttachments()     { return await this.doGET('attachments/' + planet + '/' + getSolNum()); },
+    
 
     //--------------------------------------------------------------------------------------------
     // login
@@ -563,6 +603,13 @@ qx.Class.define("myapp.Application",
           const fileName = `${report.name}.txt`;
           zip.file(fileName, report.content);
         }
+      });
+
+      const attachments = await this.recvAttachments();
+      attachments.forEach(attachment =>
+      {
+        const fileName = attachment.reportName + '/' + attachment.filename;
+        zip.file(fileName, attachment.content, {base64: true});
       });
 
       // Generate the zip file
@@ -774,16 +821,35 @@ qx.Class.define("myapp.ReportUI",
       var files = e.getData();
       if (files && files.length > 0) 
       {
-        var file = files[0];
+        const file = files[0];
         console.log("Selected file:", file);
+        let isText = false;
         const reader = new FileReader(); 
         reader.addEventListener('load', () => 
         { 
-          that.report.content = reader.result;
-          console.log("The first 4 chars are: " + that.report.content); 
-          that.onChange();
+          if (isText)
+          {
+            that.report.content = reader.result;
+            console.log("The report content is:\n" + that.report.content); 
+            that.onChange();
+          }
+          else
+          {
+            console.log("attach THIS: " + file.name);
+            if (!that.report.attachNames) that.report.attachNames = [];
+            that.report.attachNames.push(file.name);
+            const str = arrayBufferToBase64(reader.result);  // reader.result.toString('base64')
+            app.sendAttachment(that.report.name, file.name, str); // convert attachment to base64 string from the get go
+          }
         });
-        reader.readAsText(file.slice(0,4));
+        const ext = file.name.split('.').pop();
+        if (ext === "txt" || ext === "md" || ext === "rtf")
+        {
+          isText = true;
+          reader.readAsText(file /*file.slice(0,5000)*/);
+        }
+        else
+          reader.readAsArrayBuffer(file);
       }
     }, this);
     container.add(fsb);
@@ -896,7 +962,8 @@ qx.Class.define("myapp.ReportUI",
     openReportEditor()
     {
       // Create and open the CKEditor window
-      let ckEditorWindow = new myapp.CKEditorWindow(this, this.report.content, this.isCurrentSol());
+      const content = this.report.content || app.templates[this.name];
+      let ckEditorWindow = new myapp.CKEditorWindow(this, content, this.isCurrentSol());
       ckEditorWindow.open();
       //doc.add(ckEditorWindow);      
     },
@@ -1016,7 +1083,7 @@ qx.Class.define("myapp.CKEditorWindow",
     this.center();
 
     this.parent = parent;
-    console.log("new editor with content " + content);
+    console.log("new editor with content:\n" + content);
     // Add the CKEditor to the window and set content after the editor is actually created
     const ckEditor = new myapp.CKEditor(function () { ckEditor.setContent(content); });
     this.ckEditor = ckEditor;
