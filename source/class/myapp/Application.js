@@ -37,6 +37,7 @@ function arrayBufferToBase64(buffer)
   return btoa(binary);
 }
 
+const urlPrefix = 'http://localhost:8081/';
 let refDate = null;
 let commsDelay = 0;
 let username = null;
@@ -226,7 +227,9 @@ qx.Class.define("myapp.Application",
 
       this.templates = await this.recvReportTemplates();
 
-      makeButton(topPanel, "Download Reports", () => this.createZipFromReports(reportUIs), "#ccccff", 16);
+      makeButton(topPanel, "Download Reports",     () => this.createZipFromReports(reportUIs), "#ccccff", 16);
+      makeButton(topPanel, "Download Attachments", () => this.downloadAttachments(),           "#ccccff", 16);
+
       this.loginButton = makeButton(topPanel, "Login", () => this.handleLoginLogout(), "#ffcccc", 16);
 
       let queryParams = getQueryParams();
@@ -349,7 +352,7 @@ qx.Class.define("myapp.Application",
       console.log("GETsome: " + endpoint);
       try 
       {
-        const response = await fetch('http://localhost:8081/' + endpoint, 
+        const response = await fetch(urlPrefix + endpoint, 
         {
             method: 'GET',
             headers: { 'Accept': 'application/json' },
@@ -381,7 +384,7 @@ qx.Class.define("myapp.Application",
       console.log("POSTality: " + JSON.stringify(body));
       try 
       {
-        const response = await fetch('http://localhost:8081/' + endpoint, 
+        const response = await fetch(urlPrefix + endpoint, 
         {
           method: 'POST',
           //mode: 'no-cors', // this fixes CORS problems but introduces other problems -- DON'T USE
@@ -435,8 +438,29 @@ qx.Class.define("myapp.Application",
         filename: filename,
         content: content, 
       };
-
       this.doPOST('reports/add-attachment', body);
+    },
+
+    async sendAttachments(report, files)
+    {
+      console.log("sending " + files.length + " dataers");
+      var formData = new FormData();
+      for (let i = 0; i < files.length; i++)
+        formData.append("files", files[i]);
+      formData.append("reportName", report.name);
+      formData.append("username", username);
+      formData.append("token", this.token);
+    
+      var req = new qx.io.request.Xhr(urlPrefix + 'attachments');
+      req.setMethod("POST");
+      //req.setRequestHeader("Content-Type", "multipart/form-data");
+      req.setRequestData(formData);
+      
+      req.addListener("success", function(e) { console.log("Upload successfoo!"); } );
+      req.addListener("fail",    function(e) { console.error("Upload failed miserably:", e); } );
+    
+      req.send();
+      //req.dispose();
     },
 
     async transmitReport(report)
@@ -545,7 +569,7 @@ qx.Class.define("myapp.Application",
 
         // set up server-sent events
         // eventSource is tied to login because the planet can change
-        this.eventSource = new EventSource('http://localhost:8081/events/' + planet);
+        this.eventSource = new EventSource(urlPrefix + 'events/' + planet);
         this.eventSource.onmessage = function(event) 
         {
           console.log("SSE received!!!!");
@@ -627,6 +651,19 @@ qx.Class.define("myapp.Application",
       console.log("RUIs are DONE DUDE");
 
     },
+
+    async downloadAttachments()
+    {
+      // Create an invisible link to trigger the download
+      var link = document.createElement("a");
+      link.href = urlPrefix + 'attachments/zip/' + planet + '/' + this.getUiSolNum();
+      console.log("attempting download of " + link.href);
+      // The desired filename for the download, BUT seems to be overridden by the Content-Disosition header set by server
+      link.download = 'attachments' + this.getUiSolNum() + planet + '.zip'; 
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
   }
 });
 
@@ -816,41 +853,12 @@ qx.Class.define("myapp.ReportUI",
     //this.icon = icon;
 
     let fsb = new qx.ui.form.FileSelectorButton("Upload...");
+    fsb.setMultiple(true);
     fsb.addListener("changeFileSelection", function(e) 
     {
-      var files = e.getData();
-      if (files && files.length > 0) 
-      {
-        const file = files[0];
-        console.log("Selected file:", file);
-        let isText = false;
-        const reader = new FileReader(); 
-        reader.addEventListener('load', () => 
-        { 
-          if (isText)
-          {
-            that.report.content = reader.result;
-            console.log("The report content is:\n" + that.report.content); 
-            that.onChange();
-          }
-          else
-          {
-            console.log("attach THIS: " + file.name);
-            if (!that.report.attachNames) that.report.attachNames = [];
-            that.report.attachNames.push(file.name);
-            const str = arrayBufferToBase64(reader.result);  // reader.result.toString('base64')
-            app.sendAttachment(that.report.name, file.name, str); // convert attachment to base64 string from the get go
-          }
-        });
-        const ext = file.name.split('.').pop();
-        if (ext === "txt" || ext === "md" || ext === "rtf")
-        {
-          isText = true;
-          reader.readAsText(file /*file.slice(0,5000)*/);
-        }
-        else
-          reader.readAsArrayBuffer(file);
-      }
+      let files = e.getData();
+      console.log("there are actually " + files.length + " attachments");
+      app.sendAttachments(that.report, files);
     }, this);
     container.add(fsb);
     //fsb.setEnabled(false); // disabling the FileSelectorButton somehow prevents it working properly even after it's re-enabled -- FARUK
@@ -1249,4 +1257,45 @@ createBtn : function ( txt, clr, width, cb, ctx )  {
   }, ctx );
   return btn;
 },
+
+    fsb.addListener("changeFileSelection", function(e) 
+    {
+      let files = e.getData();
+      console.log("there are actually " + files.length + " attachments");
+      if (files && files.length > 0) 
+      {
+        const file = files[0];
+        console.log("Selected file:", file);
+        let isText = false;
+        const reader = new FileReader(); 
+        reader.addEventListener('load', () => 
+        { 
+          if (isText)
+          {
+            that.report.content = reader.result;
+            console.log("The report content is:\n" + that.report.content); 
+            that.onChange();
+          }
+          else
+          {
+            console.log("attach THIS: " + file.name);
+            if (!that.report.attachNames) that.report.attachNames = [];
+            that.report.attachNames.push(file.name);
+            //const str = arrayBufferToBase64(reader.result);  // reader.result.toString('base64')
+            //app.sendAttachment(that.report.name, file.name, str); // convert attachment to base64 string from the get go
+            console.log("attempting to send " + files.length + " attachments");
+            app.sendAttachments(that.report.name, files);
+          }
+        });
+        const ext = file.name.split('.').pop();
+        if (ext === "txt" || ext === "md" || ext === "rtf")
+        {
+          isText = true;
+          reader.readAsText(file);
+        }
+        else
+          reader.readAsArrayBuffer(file);
+      }
+    }, this);
+
 */
