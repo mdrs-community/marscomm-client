@@ -91,13 +91,13 @@ function setBGColor(btn, clr1, clr2)
        dom.style.setAttribute ("backgroundImage", img);
 }
 
-function makeButton(container, str, onExecute, color, fontSize, image)
+function makeButton(container, str, onExecute, color, fontSize, that, image)
 {
   if (!fontSize) fontSize = 14;
   if (!color) color = "gray";
   const button = str ? new qx.ui.form.Button(str) : new qx.ui.form.Button(null, image);
-  if (str) button.addListenerOnce("appear", function () { setBGColor(button, color); }, this);
-  button.addListener("execute", onExecute);
+  if (str) button.addListenerOnce("appear", function () { setBGColor(button, color); }, that);
+  button.addListener("execute", onExecute, that);
   container.add(button);
   return button;
 }
@@ -110,6 +110,21 @@ function makeLabel(container, str, color, fontSize)
   container.add(label);
   return label;
 }
+
+function doDownload(urlPath, filename)
+{
+  // Create an invisible link to trigger the download
+  var link = document.createElement("a");
+  link.href = urlPrefix + urlPath;
+  console.log("attempting download of " + link.href);
+  // The desired filename for the download, BUT seems to be overridden by the Content-Disosition header set by server
+  link.download = filename; 
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////////
 
 function newIM(content)
 {
@@ -227,8 +242,8 @@ qx.Class.define("myapp.Application",
 
       this.templates = await this.recvReportTemplates();
 
-      makeButton(topPanel, "Download Reports",     () => this.createZipFromReports(reportUIs), "#ccccff", 16);
-      makeButton(topPanel, "Download Attachments", () => this.downloadAttachments(),           "#ccccff", 16);
+      makeButton(topPanel, "Download Reports",     () => this.createZipFromReports(reportUIs), "#ccccff", 16, this);
+      makeButton(topPanel, "Download Attachments", () => this.downloadAttachments(),           "#ccccff", 16, this);
 
       this.loginButton = makeButton(topPanel, "Login", () => this.handleLoginLogout(), "#ffcccc", 16);
 
@@ -423,9 +438,8 @@ qx.Class.define("myapp.Application",
       const body = 
       {
         reportName: report.name,
-        content: report.content, // fileContent,
-        //username: "matts",
-        //token: "Boken"
+        content: report.content, // fileContent
+        attachments: report.attachments,
       };
       this.doPOST('reports/update', body);
     },
@@ -654,6 +668,10 @@ qx.Class.define("myapp.Application",
 
     async downloadAttachments()
     {
+      const href = 'attachments/zip/' + planet + '/' + this.getUiSolNum();
+      const filename = 'attachments' + this.getUiSolNum() + planet + '.zip';
+      doDownload(href, filename);
+      /*
       // Create an invisible link to trigger the download
       var link = document.createElement("a");
       link.href = urlPrefix + 'attachments/zip/' + planet + '/' + this.getUiSolNum();
@@ -663,6 +681,7 @@ qx.Class.define("myapp.Application",
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
+      */
     }
   }
 });
@@ -702,7 +721,7 @@ qx.Class.define("myapp.ChatUI",
       { if (e.getKeyIdentifier() === "Enter") { that.doMessage(that); } } );
     chatInputContainer.add(chatInput, { flex: 1 });
 
-    makeButton(chatInputContainer, "Send", () => this.doMessage(this), "#ccccff", 14);
+    makeButton(chatInputContainer, "Send", () => this.doMessage(this), "#ccccff", 14, this);
   },
 
   /* scenarios: 
@@ -864,12 +883,13 @@ qx.Class.define("myapp.ReportUI",
     //fsb.setEnabled(false); // disabling the FileSelectorButton somehow prevents it working properly even after it's re-enabled -- FARUK
     this.fsButton = fsb;
 
+    this.amanButton = makeButton(container, "00", () => that.openAttachManager(), "#ccccff", 14, this);
     const cimage = "myapp/copyIcon.png";
     const pimage = "myapp/pasteIcon.png";
-    this.copyButton = makeButton(container, null, () => navigator.clipboard.writeText(that.report.content), "#ccccff", 14, cimage);
-    this.pasteButton = makeButton(container, null, () => that.setContentFromBored(), "gray", 14, pimage);
+    this.copyButton = makeButton(container, null, () => navigator.clipboard.writeText(that.report.content), "#ccccff", 14, this, cimage);
+    this.pasteButton = makeButton(container, null, () => that.setContentFromBored(), "gray", 14, this, pimage);
 
-    this.editButton = makeButton(container, "Edit", () => that.openReportEditor(), "gray", 14);
+    this.editButton = makeButton(container, "Edit", () => that.openReportEditor(), "gray", 14, this);
 
     function onXmit()
     { 
@@ -878,7 +898,7 @@ qx.Class.define("myapp.ReportUI",
       app.transmitReport(that.report); // tell server to send report to other planet
       //that.realizeState("Transmitted"); // SSE will cause UI to be updated
     }
-    this.txButton = makeButton(container, "Transmit", onXmit, "gray", 14);
+    this.txButton = makeButton(container, "Transmit", onXmit, "gray", 14, this);
     this.txButton.setEnabled(false);
 
     this.label = makeLabel(container, name, "gray", 18);
@@ -975,6 +995,22 @@ qx.Class.define("myapp.ReportUI",
       ckEditorWindow.open();
       //doc.add(ckEditorWindow);      
     },
+
+    openAttachManager()
+    {
+      const attachments = this.report.attachments;
+      let attachManager = new myapp.AttachmentManager(this, attachments, this.isCurrentSol());
+      attachManager.center();
+      attachManager.open();
+    },
+
+    removeAttachment(attachment)
+    {
+      this.report.attachments.splice(this.report.attachments.indexOf(attachment), 1);
+      console.log("removing attachment -- after: ");
+      console.log(this.report.attachments);
+    },
+
 
     setContent(content)
     {
@@ -1235,6 +1271,103 @@ function startXmitProgressDisplay(commsDelay, parentContainer, size, onDone)
 
   return circularProgress;
 }
+
+//////////////////////////////////////////////////////////////////////////////////////////////////
+
+qx.Class.define("myapp.AttachmentManager", 
+{
+  extend: qx.ui.window.Window,
+
+  construct: function(reportUI, attachments, canEdit) {
+    this.base(arguments, "Attachment Manager");
+    this.setLayout(new qx.ui.layout.VBox(10));
+    this.setWidth(400);
+    this.setHeight(300);
+
+    this.reportUI = reportUI;
+
+    // List to display attachments
+    this.__attachmentList = new qx.ui.form.List();
+    this.__attachmentList.setAllowGrowY(true);
+    this.__attachmentList.setHeight(200);
+    this.__attachmentList.setSelectionMode("multi");
+    console.log("AttachMan sees " + attachments.length + " attachments");
+    attachments.forEach(attachment => {
+      let listItem = new qx.ui.form.ListItem(attachment.filename);
+      listItem.setUserData("attachment", attachment);
+      this.__attachmentList.add(listItem);
+    });
+
+    // Add scroll container
+    let scrollContainer = new qx.ui.container.Scroll();
+    scrollContainer.add(this.__attachmentList);
+    this.add(scrollContainer, { flex: 1 });
+
+    const bbar = new qx.ui.container.Composite(new qx.ui.layout.HBox(10));
+    bbar.add(new qx.ui.core.Spacer(), { flex: 1 });
+    makeButton(bbar, "Download", this.__onDownload, "#ccccff", 14, this);
+    if (canEdit) makeButton(bbar, "Delete",   this.__onDelete,   "#ccccff", 14, this);
+    makeButton(bbar, "Close",    this.close,        "#ccccff", 14, this);
+    this.add(bbar);
+
+/*    // Add download button
+    let downloadButton = new qx.ui.form.Button("Download");
+    downloadButton.addListener("execute", this.__onDownload, this);
+    this.add(downloadButton);
+
+    if (canEdit)
+    {
+      // Add delete button
+      let deleteButton = new qx.ui.form.Button("Delete");
+      deleteButton.addListener("execute", this.__onDelete, this);
+      this.add(deleteButton);
+    }
+
+    // Close button
+    let closeButton = new qx.ui.form.Button("Close");
+    closeButton.addListener("execute", function() {
+      this.close();
+    }, this);
+    this.add(closeButton);
+  */
+  },
+
+  members: {
+    __attachmentList: null,
+
+    __onDownload: function() 
+    {
+      let selection = this.__attachmentList.getSelection();
+      if (selection.length === 0) { alert("Please select an attachment to download."); return; }
+      selection.forEach(selectedItem =>
+      {
+        const attachment = selectedItem.getUserData("attachment");
+        let downloadUrl = "/download?filename=" + encodeURIComponent(attachment.getFilename());
+        doDownload(downloadUrl, attachment.filename);
+
+        /*let link = document.createElement("a");
+        link.href = downloadUrl;
+        link.download = attachment.getFilename();
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link); */
+      });       
+    },
+
+    __onDelete: function() 
+    {
+      let selection = this.__attachmentList.getSelection();
+      if (selection.length === 0) { alert("Please select an attachment to download."); return; }
+      selection.forEach(selectedItem => 
+      { 
+        this.__attachmentList.remove(selectedItem);
+        const attachment = selectedItem.getUserData("attachment");
+        this.reportUI.removeAttachment(attachment);
+      });
+      this.reportUI.onChange(); // done removing attachments, now call onChange() to send to server
+    }
+  }
+});
 
 
 /*
