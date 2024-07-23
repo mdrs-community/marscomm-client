@@ -906,14 +906,14 @@ qx.Class.define("myapp.ReportUI",
   
   members: 
   {
-    name: null,
-
-    container: null,
-    icon: null,
-    fsButton: null,
+    name:       null,
+    container:  null,
+    icon:       null,
+    fsButton:   null,
+    amanButton: null,
     editButton: null,
-    txButton: null,
-    label: null,
+    txButton:   null,
+    label:      null,
 
     state: "Unused", // ReportUI states: Unused, Empty, Populated, Transmitted, Received
     report: null,
@@ -974,6 +974,11 @@ qx.Class.define("myapp.ReportUI",
 
       const editStr = isCurrentSol ? "Edit" : "View";
       this.editButton.setLabel(editStr);
+
+      let n = 0;
+      if (this.report && this.report.attachments) n = this.report.attachments.length;
+      const str = (n < 10) ? "0" + n : n.toString();
+      this.amanButton.setLabel(str);
 
       let color;
       if      (this.state === "Unused")      color = "gray";
