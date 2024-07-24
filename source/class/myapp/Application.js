@@ -4,7 +4,8 @@
     //rockal time
     //view old reports
     //report templates
-    add attachment
+    //add attachment
+    put AI MDRS logo at the top & use photo as a background in the chat
     talk to Sean!
     deferred: fix support for Report images
     deferred: small Mars/Earth planet icons...do only after suckcessfoolly accepted, as this is pure sizzle
@@ -165,6 +166,7 @@ qx.Class.define("myapp.Application",
     isLoggedIn: false,
     token: 0,
     loginButton: null,
+    planetIcon: null,
     solNum: 0,
     sol: null,
     reportUIs: null,
@@ -205,6 +207,8 @@ qx.Class.define("myapp.Application",
       mainContainer.add(topPanel);
       this.topPanel = topPanel;
 
+      let logo = new qx.ui.basic.Image("myapp/MDRSlogo.jpg");
+      topPanel.add(logo); 
       const mcLabel = makeLabel(topPanel, "MarsComm", "blue", 24);
       topPanel.add(new qx.ui.core.Spacer(), { flex: 1 });
       let solNumLabel = makeLabel(topPanel, "Sol", "blue", 24);
@@ -246,6 +250,11 @@ qx.Class.define("myapp.Application",
       makeButton(topPanel, "Download Attachments", () => this.downloadAttachments(),           "#ccccff", 16, this);
 
       this.loginButton = makeButton(topPanel, "Login", () => this.handleLoginLogout(), "#ffcccc", 16);
+      //this.planetButton = makeButton(topPanel, null, () => { }, "gray", 14, this, "myapp/Mars.png");
+      this.planetIcon = new qx.ui.basic.Image("myapp/Earth.png");
+      //console.log("Planet padding = " + this.planetIcon.getPaddingTop()); 
+      //this.planetIcon.setPadding(0);
+      topPanel.add(this.planetIcon);
 
       let queryParams = getQueryParams();
       if (queryParams.user) 
@@ -574,6 +583,8 @@ qx.Class.define("myapp.Application",
         this.loginButton.setLabel(username + '[' + planet + ']');
         //this.__loginButton.setBackgroundColor("#ccccff");
         setBGColor(this.loginButton, "#ccccff");
+        const planetIconFile = planet === "Mars" ? "myapp/Mars.png" : "myapp/Earth.png";
+        this.planetIcon.setSource(planetIconFile);
         const tpcolor = planet === "Mars" ? "#ffeeee" : "#eeeeff";
         this.topPanel.setBackgroundColor(tpcolor);
 
@@ -705,6 +716,15 @@ qx.Class.define("myapp.ChatUI",
     chatPanel.setPadding(10);
     this.chatPanel = chatPanel;
     chatPanel.setDecorator("main");
+    chatPanel.getContentElement().addClass("background-composite"); // sets CSS class defined in index.html
+    /*chatPanel.getContentElement().setStyles(
+    {
+      "background-image": "url(resource/myapp/MDRS-2017.jpg)",
+      "background-size": "cover", // Ensures the image covers the entire container
+      "background-repeat": "no-repeat",
+      "background-position": "center",
+      "background-opacity": "0.25" // Adjust this value to set the desired transparency
+    });*/
     chatContainer.add(chatPanel, { flex: 2 });
     let chatScroll = new qx.ui.container.Scroll();
     chatScroll.add(chatPanel);
@@ -764,7 +784,7 @@ qx.Class.define("myapp.ChatUI",
     
         const str = '<b>' + im.user + '</b> <font size="-2">' + (new Date()).toString() + ':</font><br>' + im.content + '<br> <br>';
         const label = new qx.ui.basic.Label().set( { value: str, rich: true });
-        const color = (im.user === username) ? "blue" : "black";
+        const color = (im.user === username) ? "#0000bb" : "black";
         label.setTextColor(color);
         label.setFont(new qx.bom.Font(16, ["Arial"]));
         container.add(label);  
@@ -972,7 +992,7 @@ qx.Class.define("myapp.ReportUI",
       if (this.editButton) { this.editButton.setEnabled(editEnabled); setBGColor(this.editButton, editBgColor); }
       if (this.txButton)   {   this.txButton.setEnabled(txEnabled);   setBGColor(this.txButton, txBgColor); }
 
-      const editStr = isCurrentSol ? "Edit" : "View";
+      const editStr = isCurrentSol ? "Edit..." : "View...";
       this.editButton.setLabel(editStr);
 
       let n = 0;
