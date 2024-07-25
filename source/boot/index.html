@@ -34,6 +34,26 @@
       -webkit-touch-callout: none !important;
       overflow: hidden;
     }
+
+    .background-composite {
+      position: relative;
+    }
+
+    .background-composite::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-image: url('resource/myapp/MDRS-2017.jpg');
+      background-size: cover;
+      background-repeat: no-repeat;
+      /* background-position: center;  looks better left aligned rather than centered */ 
+      opacity: 0.2; /* Adjust this value to set the desired transparency */
+      z-index: -1;
+    }
+
   </style>
 
   <title>myapp</title>

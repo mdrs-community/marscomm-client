@@ -5,6 +5,8 @@
     //view old reports
     //report templates
     //add attachment
+    dark theme
+    feedback loop for reports
     put AI MDRS logo at the top & use photo as a background in the chat
     talk to Sean!
     deferred: fix support for Report images
@@ -44,6 +46,14 @@ let commsDelay = 0;
 let username = null;
 let planet = null;
 let app = null;
+let theme = 0; // 0=dark, 1=light
+const darkColor = '#222222';
+const lightColor = '#eeeeee';
+function themeBgColor()       { return theme ? lightColor : darkColor; }
+function themeButtonColor()   { return theme ? "#ccccff" : '#9999dd' }
+function themeInactiveColor() { return theme ? "#cccccc" : '#999999' }
+function themeBlueText()      { return theme ? "blue"    : '#4444ff' }
+function themeStdText()       { return theme ? "black"   : 'white' }
 
 function getSolNum(date) 
 {
@@ -84,6 +94,7 @@ function setBGColor(btn, clr1, clr2)
 {
    var elem = btn.getContentElement();
    var dom  = elem.getDomElement();
+   if (!dom) return;
    if (!clr2) clr2 = clr1;
    var img  = "linear-gradient(" + clr1 + " 35%, " + clr2 + " 100%)";
    if (dom.style.setProperty)
@@ -197,8 +208,13 @@ qx.Class.define("myapp.Application",
       console.log("commsDelay=" + commsDelay + ", refDate=" + this.refDate);
 
       // Create the main layout
+      let queryParams = getQueryParams();
+      if (queryParams.theme) 
+        theme = Number(queryParams.theme);
+
       let doc = this.getRoot();
       let mainContainer = new qx.ui.container.Composite(new qx.ui.layout.VBox());
+      mainContainer.setBackgroundColor(themeBgColor());
       doc.add(mainContainer, { edge: 0 });
 
       let topPanel = new qx.ui.container.Composite(new qx.ui.layout.HBox(10));
@@ -209,9 +225,9 @@ qx.Class.define("myapp.Application",
 
       let logo = new qx.ui.basic.Image("myapp/MDRSlogo.jpg");
       topPanel.add(logo); 
-      const mcLabel = makeLabel(topPanel, "MarsComm", "blue", 24);
+      const mcLabel = makeLabel(topPanel, "MarsComm", themeBlueText(), 24);
       topPanel.add(new qx.ui.core.Spacer(), { flex: 1 });
-      let solNumLabel = makeLabel(topPanel, "Sol", "blue", 24);
+      let solNumLabel = makeLabel(topPanel, "Sol", themeBlueText(), 24);
 
       let numberInput = new qx.ui.form.Spinner();
       numberInput.addListener("changeValue", async function(event) 
@@ -231,8 +247,9 @@ qx.Class.define("myapp.Application",
 
       let rightPanel = new qx.ui.container.Composite(new qx.ui.layout.VBox(10));
       rightPanel.setPadding(10);
+      rightPanel.setWidth(300);
       rightPanel.setDecorator("main");
-      middleContainer.add(rightPanel, { flex: 1 });
+      middleContainer.add(rightPanel);
 
       let reportNames = await this.recvReports();
       let reportUIs = [];
@@ -246,8 +263,9 @@ qx.Class.define("myapp.Application",
 
       this.templates = await this.recvReportTemplates();
 
-      makeButton(topPanel, "Download Reports",     () => this.createZipFromReports(reportUIs), "#ccccff", 16, this);
-      makeButton(topPanel, "Download Attachments", () => this.downloadAttachments(),           "#ccccff", 16, this);
+      makeButton(topPanel, "Download Reports...",     () => this.createZipFromReports(reportUIs), themeButtonColor(), 16, this);
+      makeButton(topPanel, "Download Attachments...", () => this.downloadAttachments(),           themeButtonColor(), 16, this);
+      makeButton(topPanel, " ", () => this.toggleTheme(), themeButtonColor(), 16, this);
 
       this.loginButton = makeButton(topPanel, "Login", () => this.handleLoginLogout(), "#ffcccc", 16);
       //this.planetButton = makeButton(topPanel, null, () => { }, "gray", 14, this, "myapp/Mars.png");
@@ -256,7 +274,6 @@ qx.Class.define("myapp.Application",
       //this.planetIcon.setPadding(0);
       topPanel.add(this.planetIcon);
 
-      let queryParams = getQueryParams();
       if (queryParams.user) 
         await this.attemptLogin(queryParams.user, "yo"); //TODO: remove autologin before release
       // Unfortunately we don't know what planet we are on until after we complete the login, and without knowing the
@@ -311,6 +328,14 @@ qx.Class.define("myapp.Application",
           reportUI.update(sol.reports[i]);
         }
       }
+    },
+
+    toggleTheme() 
+    { 
+      theme = theme ? 0 : 1; 
+      const currentUrl = new URL(window.location.href);
+      currentUrl.searchParams.set("theme", theme);
+      window.location.href = currentUrl.toString();
     },
 
     getUiSolNum() { return this.solNum; },
@@ -581,16 +606,16 @@ qx.Class.define("myapp.Application",
         planet = result.planet;
         this.token = result.token;
         this.loginButton.setLabel(username + '[' + planet + ']');
-        //this.__loginButton.setBackgroundColor("#ccccff");
-        setBGColor(this.loginButton, "#ccccff");
         const planetIconFile = planet === "Mars" ? "myapp/Mars.png" : "myapp/Earth.png";
         this.planetIcon.setSource(planetIconFile);
-        const tpcolor = planet === "Mars" ? "#ffeeee" : "#eeeeff";
+        const tpcolor = theme ? (planet === "Mars" ? "#ffeeee" : "#eeeeff") : (planet === "Mars" ? "#220000" : "#000022");
         this.topPanel.setBackgroundColor(tpcolor);
 
         if (loginDialog) loginDialog.close();
         // now that we're logged in we can finish the startup
         await this.changeSol(this, getSolNum());
+
+        setBGColor(this.loginButton, themeButtonColor());
 
         // set up server-sent events
         // eventSource is tied to login because the planet can change
@@ -710,7 +735,7 @@ qx.Class.define("myapp.ChatUI",
     let chatContainer = new qx.ui.container.Composite(new qx.ui.layout.VBox());
     chatContainer.setDecorator("main");
     chatContainer.setWidth(400);
-    parentContainer.add(chatContainer, { flex: 2 });
+    parentContainer.add(chatContainer, { flex: 3 });
 
     let chatPanel = new qx.ui.container.Composite(new qx.ui.layout.VBox());
     chatPanel.setPadding(10);
@@ -736,12 +761,14 @@ qx.Class.define("myapp.ChatUI",
   
     let chatInput = new qx.ui.form.TextField();
     this.chatInput = chatInput;
+    chatInput.setBackgroundColor(themeBgColor());
+    chatInput.setTextColor(themeStdText());
     chatInput.setPlaceholder("Type a message...");
     chatInput.addListener("keypress", function(e) 
       { if (e.getKeyIdentifier() === "Enter") { that.doMessage(that); } } );
     chatInputContainer.add(chatInput, { flex: 1 });
 
-    makeButton(chatInputContainer, "Send", () => this.doMessage(this), "#ccccff", 14, this);
+    makeButton(chatInputContainer, "Send", () => this.doMessage(this), themeButtonColor(), 14, this);
   },
 
   /* scenarios: 
@@ -784,7 +811,7 @@ qx.Class.define("myapp.ChatUI",
     
         const str = '<b>' + im.user + '</b> <font size="-2">' + (new Date()).toString() + ':</font><br>' + im.content + '<br> <br>';
         const label = new qx.ui.basic.Label().set( { value: str, rich: true });
-        const color = (im.user === username) ? "#0000bb" : "black";
+        const color = theme ? ((im.user === username) ? "#0000bb" : "black") : (im.user === username) ? "#9999ff" : "white";
         label.setTextColor(color);
         label.setFont(new qx.bom.Font(16, ["Arial"]));
         container.add(label);  
@@ -903,10 +930,10 @@ qx.Class.define("myapp.ReportUI",
     //fsb.setEnabled(false); // disabling the FileSelectorButton somehow prevents it working properly even after it's re-enabled -- FARUK
     this.fsButton = fsb;
 
-    this.amanButton = makeButton(container, "00", () => that.openAttachManager(), "#ccccff", 14, this);
+    this.amanButton = makeButton(container, "00", () => that.openAttachManager(), themeButtonColor(), 14, this);
     const cimage = "myapp/copyIcon.png";
     const pimage = "myapp/pasteIcon.png";
-    this.copyButton = makeButton(container, null, () => navigator.clipboard.writeText(that.report.content), "#ccccff", 14, this, cimage);
+    this.copyButton = makeButton(container, null, () => navigator.clipboard.writeText(that.report.content), themeButtonColor(), 14, this, cimage);
     this.pasteButton = makeButton(container, null, () => that.setContentFromBored(), "gray", 14, this, pimage);
 
     this.editButton = makeButton(container, "Edit", () => that.openReportEditor(), "gray", 14, this);
@@ -985,9 +1012,9 @@ qx.Class.define("myapp.ReportUI",
       this.state = forcedState ? forcedState : this.computeState();
       if (this.report && this.report.transmitted) console.log("realizing new state: " + this.state + ", isCurrentSol=" + isCurrentSol);
       const editEnabled = this.state !== "Unused"; // && isCurrentSol; // edit button now works in View mode for non-current Sols
-      const editBgColor = editEnabled ? "#ccccff" : "#cccccc";
+      const editBgColor = editEnabled ? themeButtonColor() : "#cccccc";
       const txEnabled = isCurrentSol && editEnabled && this.state !== "Empty";
-      const txBgColor = txEnabled ? "#ccccff" : "#cccccc";
+      const txBgColor = txEnabled ? themeButtonColor() : "#cccccc";
       if (this.fsButton)   {   this.fsButton.setEnabled(editEnabled); setBGColor(this.fsButton, editBgColor); }
       if (this.editButton) { this.editButton.setEnabled(editEnabled); setBGColor(this.editButton, editBgColor); }
       if (this.txButton)   {   this.txButton.setEnabled(txEnabled);   setBGColor(this.txButton, txBgColor); }
@@ -1003,7 +1030,7 @@ qx.Class.define("myapp.ReportUI",
       let color;
       if      (this.state === "Unused")      color = "gray";
       else if (this.state === "Empty")       color = "orange";
-      else if (this.state === "Populated")   color = "blue";
+      else if (this.state === "Populated")   color = themeBlueText();
       else if (this.state === "Transmitted") color = "purple";
       else if (this.state === "Received")    color = "green";
       if (this.label) this.label.setTextColor(color);
@@ -1330,9 +1357,9 @@ qx.Class.define("myapp.AttachmentManager",
 
     const bbar = new qx.ui.container.Composite(new qx.ui.layout.HBox(10));
     bbar.add(new qx.ui.core.Spacer(), { flex: 1 });
-    makeButton(bbar, "Download", this.__onDownload, "#ccccff", 14, this);
-    if (canEdit) makeButton(bbar, "Delete",   this.__onDelete,   "#ccccff", 14, this);
-    makeButton(bbar, "Close",    this.close,        "#ccccff", 14, this);
+    makeButton(bbar, "Download", this.__onDownload, themeButtonColor(), 14, this);
+    if (canEdit) makeButton(bbar, "Delete",   this.__onDelete,   themeButtonColor(), 14, this);
+    makeButton(bbar, "Close",    this.close,        themeButtonColor(), 14, this);
     this.add(bbar);
 
 /*    // Add download button
