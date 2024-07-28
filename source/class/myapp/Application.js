@@ -5,8 +5,11 @@
     //view old reports
     //report templates
     //add attachment
-    dark theme
+    //dark theme
     feedback loop for reports
+      red when coming back from Earth
+        authorPlanet implemented...now test et
+      dirty bit to get Transmit state right
     put AI MDRS logo at the top & use photo as a background in the chat
     talk to Sean!
     deferred: fix support for Report images
@@ -237,6 +240,8 @@ qx.Class.define("myapp.Application",
         this.timerId = setTimeout(async function() { that.changeSol(that, solNum); }, 900);
       }, this);
       topPanel.add(numberInput);
+      numberInput.setBackgroundColor(themeBgColor()); // somehow doesn't seem to work
+      this.numberInput = numberInput;
 
       topPanel.add(new qx.ui.core.Spacer(), { flex: 1 });
          
@@ -263,8 +268,8 @@ qx.Class.define("myapp.Application",
 
       this.templates = await this.recvReportTemplates();
 
-      makeButton(topPanel, "Download Reports...",     () => this.createZipFromReports(reportUIs), themeButtonColor(), 16, this);
       makeButton(topPanel, "Download Attachments...", () => this.downloadAttachments(),           themeButtonColor(), 16, this);
+      makeButton(topPanel, "Download Reports...",     () => this.createZipFromReports(reportUIs), themeButtonColor(), 16, this);
       makeButton(topPanel, " ", () => this.toggleTheme(), themeButtonColor(), 16, this);
 
       this.loginButton = makeButton(topPanel, "Login", () => this.handleLoginLogout(), "#ffcccc", 16);
@@ -473,6 +478,7 @@ qx.Class.define("myapp.Application",
       {
         reportName: report.name,
         content: report.content, // fileContent
+        approved: report.approved,
         attachments: report.attachments,
       };
       this.doPOST('reports/update', body);
@@ -614,6 +620,7 @@ qx.Class.define("myapp.Application",
         if (loginDialog) loginDialog.close();
         // now that we're logged in we can finish the startup
         await this.changeSol(this, getSolNum());
+        this.numberInput.setValue(getSolNum());
 
         setBGColor(this.loginButton, themeButtonColor());
 
@@ -938,6 +945,10 @@ qx.Class.define("myapp.ReportUI",
 
     this.editButton = makeButton(container, "Edit", () => that.openReportEditor(), "gray", 14, this);
 
+    this.approveButton = new qx.ui.form.CheckBox("Approve");
+    this.approveButton.addListener("execute", () => { this.report.approved = this.approveButton.getValue() ? true : false; this.onChange(); })
+    container.add(this.approveButton);
+
     function onXmit()
     { 
       that.report.transmitted = true;
@@ -949,6 +960,9 @@ qx.Class.define("myapp.ReportUI",
     this.txButton.setEnabled(false);
 
     this.label = makeLabel(container, name, "gray", 18);
+    this.label.setWidth(100);
+    this.slabel = makeLabel(container, "TODO", "gray", 14);
+    this.slabel.setTextAlign("right");
   },
   
   members: 
@@ -959,8 +973,10 @@ qx.Class.define("myapp.ReportUI",
     fsButton:   null,
     amanButton: null,
     editButton: null,
+    approveButton: null,
     txButton:   null,
     label:      null,
+    slabel:     null,
 
     state: "Unused", // ReportUI states: Unused, Empty, Populated, Transmitted, Received
     report: null,
@@ -973,6 +989,9 @@ qx.Class.define("myapp.ReportUI",
       //{ 
       //  container.remove(this.xmitProgress); 
       //  this.xmitProgress = null; 
+      if (this.report.approved)
+        this.realizeState("Approved");
+      else
         this.realizeState("Received");
       //} 
     },
@@ -999,7 +1018,9 @@ qx.Class.define("myapp.ReportUI",
       if (this.report.transmitted) console.log("compute THIS: " + JSON.stringify(this.report));
       if (this.report.transmitted) console.log("transmitted..." + this.report.xmitTime.toString() + " " + commsDelayPassed(this.report.xmitTime, this.commsDelay));
       if (this.report.transmitted) 
-        if (commsDelayPassed(this.report.xmitTime)) return "Received";
+        if (commsDelayPassed(this.report.xmitTime)) 
+          if (this.report.approved) return "Approved";
+          else return "Received";
         else return "Transmitted";
 
       if (this.report.content) return "Populated";
@@ -1011,13 +1032,19 @@ qx.Class.define("myapp.ReportUI",
       const isCurrentSol = this.isCurrentSol();
       this.state = forcedState ? forcedState : this.computeState();
       if (this.report && this.report.transmitted) console.log("realizing new state: " + this.state + ", isCurrentSol=" + isCurrentSol);
-      const editEnabled = this.state !== "Unused"; // && isCurrentSol; // edit button now works in View mode for non-current Sols
+      const viewEnabled = this.state !== "Unused"; // edit button now works in View mode for non-current Sols
+      const editEnabled = viewEnabled && isCurrentSol;
+      const aprvEnabled = editEnabled && (this.state === "Received" || this.state === "Approved");
       const editBgColor = editEnabled ? themeButtonColor() : "#cccccc";
       const txEnabled = isCurrentSol && editEnabled && this.state !== "Empty";
       const txBgColor = txEnabled ? themeButtonColor() : "#cccccc";
-      if (this.fsButton)   {   this.fsButton.setEnabled(editEnabled); setBGColor(this.fsButton, editBgColor); }
-      if (this.editButton) { this.editButton.setEnabled(editEnabled); setBGColor(this.editButton, editBgColor); }
-      if (this.txButton)   {   this.txButton.setEnabled(txEnabled);   setBGColor(this.txButton, txBgColor); }
+      if (this.fsButton)      {      this.fsButton.setEnabled(editEnabled); setBGColor(this.fsButton,      editBgColor); }
+      if (this.editButton)    {    this.editButton.setEnabled(viewEnabled); setBGColor(this.editButton,    editBgColor); }
+      if (this.approveButton) { this.approveButton.setEnabled(aprvEnabled); setBGColor(this.approveButton, editBgColor); }
+      if (this.txButton)      {      this.txButton.setEnabled(txEnabled);   setBGColor(this.txButton,      txBgColor); }
+
+      if (planet === "Earth") this.approveButton.setVisibility("visible");
+      else                    this.approveButton.setVisibility("excluded");
 
       const editStr = isCurrentSol ? "Edit..." : "View...";
       this.editButton.setLabel(editStr);
@@ -1032,9 +1059,20 @@ qx.Class.define("myapp.ReportUI",
       else if (this.state === "Empty")       color = "orange";
       else if (this.state === "Populated")   color = themeBlueText();
       else if (this.state === "Transmitted") color = "purple";
-      else if (this.state === "Received")    color = "green";
+      else if (this.state === "Approved")    color = "green";
+      else if (this.state === "Received" && planet === "Mars" && this.report.authorPlanet === "Earth") color = "red";
+      else if (this.state === "Received")    color = "#20f0f0"; // teal
+
       if (this.label) this.label.setTextColor(color);
 
+      if (this.slabel)
+      {
+        let slabelTxt = this.state;
+        if (this.state === "Empty") slabelTxt = "TODO";
+        else if (this.state === "Populated") slabelTxt = "Filled";
+        else if (this.state === "Received" && planet === "Mars" && this.report.authorPlanet === "Earth") slabelTxt = "Rejected";
+        this.slabel.setValue(slabelTxt);
+      }
       if (this.state === "Transmitted" && this.report && inTransit(this.report)) 
         this.xmitProgress = startXmitProgressDisplay(commsDelay, this.container, 33, (container) => this.xmitDone(container));
     },
