@@ -6,14 +6,15 @@
     //report templates
     //add attachment
     //dark theme
-    feedback loop for reports
-      red when coming back from Earth
-        authorPlanet implemented...now test et
-      dirty bit to get Transmit state right
-    put AI MDRS logo at the top & use photo as a background in the chat
-    talk to Sean!
+    //feedback loop for reports
+    //  red when coming back from Earth
+    //    authorPlanet implemented...now test et
+    //  dirty bit to get Transmit state right
+    //don't load Sols past end of mission
+    //put AI MDRS logo at the top & use photo as a background in the chat
+    //talk to Sean!
+    //deferred: small Mars/Earth planet icons...do only after suckcessfoolly accepted, as this is pure sizzle
     deferred: fix support for Report images
-    deferred: small Mars/Earth planet icons...do only after suckcessfoolly accepted, as this is pure sizzle
 */
 
 //const JSZip = require('jszip');
@@ -22,6 +23,7 @@ function log(str) { console.log(str); }
 
 function getQueryParams() 
 {
+  console.log(window.location);
   let params = {};
   let queryString = window.location.search;
   if (queryString) 
@@ -43,9 +45,10 @@ function arrayBufferToBase64(buffer)
   return btoa(binary);
 }
 
-const urlPrefix = 'http://localhost:8081/';
+let urlPrefix = 'http://localhost:8081/';
 let refDate = null;
 let commsDelay = 0;
+let rotationLength = 0;
 let username = null;
 let planet = null;
 let app = null;
@@ -61,7 +64,9 @@ function themeStdText()       { return theme ? "black"   : 'white' }
 function getSolNum(date) 
 {
   if (!date) date = new Date(); 
-  return Math.floor((date.getTime() - refDate.getTime()) / (1000 * 60 * 60 * 24)); 
+  let solNum = Math.floor((date.getTime() - refDate.getTime()) / (1000 * 60 * 60 * 24)); 
+  if (solNum > rotationLength-1) solNum = rotationLength-1;
+  return solNum;
 }
 
 function commsDelayPassed(sentTime)
@@ -203,7 +208,22 @@ qx.Class.define("myapp.Application",
         qx.log.appender.Console;
       }
 
+      let queryParams = getQueryParams();
+      if (queryParams.theme) 
+        theme = Number(queryParams.theme);
+      if (queryParams.serverHost)
+      {
+        urlPrefix = 'http://' + queryParams.serverHost;
+        if (queryParams.serverPort)
+          urlPrefix += ':' + queryParams.serverPort;
+        urlPrefix += '/';
+      }
+      else
+        urlPrefix = 'http://' + window.location.hostname + ':8081/';
+      console.log('urlPrefix=' + urlPrefix);
+
       commsDelay = await this.recvCommsDelay();
+      rotationLength = 2; //TODO put me back:  await this.recvRotationLength();
       refDate = new Date(await this.recvRefDate());
       this.refDate = refDate;
       //this.startDay = daysSinceRef(this.startDate);
@@ -211,10 +231,6 @@ qx.Class.define("myapp.Application",
       console.log("commsDelay=" + commsDelay + ", refDate=" + this.refDate);
 
       // Create the main layout
-      let queryParams = getQueryParams();
-      if (queryParams.theme) 
-        theme = Number(queryParams.theme);
-
       let doc = this.getRoot();
       let mainContainer = new qx.ui.container.Composite(new qx.ui.layout.VBox());
       mainContainer.setBackgroundColor(themeBgColor());
@@ -233,6 +249,7 @@ qx.Class.define("myapp.Application",
       let solNumLabel = makeLabel(topPanel, "Sol", themeBlueText(), 24);
 
       let numberInput = new qx.ui.form.Spinner();
+      numberInput.set({ minimum: 0, maximum: rotationLength-1 });
       numberInput.addListener("changeValue", async function(event) 
       {
         const solNum = event.getData(); // proper event is not available inside the setTimeout callback
@@ -280,7 +297,9 @@ qx.Class.define("myapp.Application",
       topPanel.add(this.planetIcon);
 
       if (queryParams.user) 
-        await this.attemptLogin(queryParams.user, "yo"); //TODO: remove autologin before release
+        await this.attemptLogin(queryParams.user, "yo"); //TODO: disable autologin before release
+      else
+        this.openLoginDialog();
       // Unfortunately we don't know what planet we are on until after we complete the login, and without knowing the
       // planet we don't what to do with incoming reports.  So we can start listeners and such but they can't do shiite
       // until the login is done.
@@ -542,6 +561,8 @@ qx.Class.define("myapp.Application",
 
     async recvCommsDelay()      { return (await this.doGET('comms-delay')).commsDelay; },
 
+    async recvRotationLength()  { return (await this.doGET('rotation-length')).rotationLength; },
+
     async recvRefDate()         { return (await this.doGET('ref-date')).refDate; },
 
     async recvReportTemplates() { return await this.doGET('reports/templates'); },
@@ -594,9 +615,9 @@ qx.Class.define("myapp.Application",
       loginButton.addListener("execute", () => this.attemptLogin(usernameInput.getValue(), passwordInput.getValue(), loginDialog));
       buttonContainer.add(loginButton);
 
-      let cancelButton = new qx.ui.form.Button("Cancel");
-      cancelButton.addListener("execute", () => loginDialog.close());
-      buttonContainer.add(cancelButton);
+      //let cancelButton = new qx.ui.form.Button("Cancel");
+      //cancelButton.addListener("execute", () => loginDialog.close());
+      //buttonContainer.add(cancelButton);
 
       loginDialog.center();
       loginDialog.open();
@@ -605,7 +626,7 @@ qx.Class.define("myapp.Application",
     async attemptLogin(usernameIn, password, loginDialog) 
     {
       const result = await this.sendLogin(usernameIn, password);
-      if (result.token)
+      if (result && result.token)
       {
         this.isLoggedIn = true;
         username = usernameIn;
@@ -646,10 +667,10 @@ qx.Class.define("myapp.Application",
             }
         }
       } 
-      else if (result.message)
+      else if (result && result.message)
         alert(result.message);
       else 
-        alert("Login failure");
+        alert("Login failure for " + usernameIn);
 
     },
 
@@ -662,6 +683,7 @@ qx.Class.define("myapp.Application",
       planet = null;
       this.loginButton.setLabel("Login");
       setBGColor(this.loginButton, "#ffcccc");
+      this.openLoginDialog();
       // Add any additional logout logic here
     },
 
@@ -962,7 +984,7 @@ qx.Class.define("myapp.ReportUI",
     this.label = makeLabel(container, name, "gray", 18);
     this.label.setWidth(100);
     this.slabel = makeLabel(container, "TODO", "gray", 14);
-    this.slabel.setTextAlign("right");
+    //this.slabel.setTextAlign("right");
   },
   
   members: 
