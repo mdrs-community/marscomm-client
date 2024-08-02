@@ -1,29 +1,28 @@
 /* TODO
-    //different roles...but what should be different?
-    //test with 3 clients -- need to switch to a different port for FireFox to work...somehow it goes to Mongoose but Chrome goes to qooxdoo
-    //rockal time
-    //view old reports
-    //report templates
-    //add attachment
-    //dark theme
-    //feedback loop for reports
-    //  red when coming back from Earth
-    //    authorPlanet implemented...now test et
-    //  dirty bit to get Transmit state right
-    //don't load Sols past end of mission
-    //put AI MDRS logo at the top & use photo as a background in the chat
-    //talk to Sean!
-    //deferred: small Mars/Earth planet icons...do only after suckcessfoolly accepted, as this is pure sizzle
-    deferred: fix support for Report images
 */
 
-//const JSZip = require('jszip');
+let urlPrefix = 'http://localhost:8081/';
+let refDate = null;
+let commsDelay = 0;
+let rotationLength = 0;
+let username = null;
+let planet = null;
+let app = null;
+let theme = 0; // 0=dark, 1=light
+const darkColor = '#222222';
+const lightColor = '#eeeeee';
+function themeBgColor()       { return theme ? lightColor : darkColor; }
+function themeButtonColor()   { return theme ? "#ccccff"  : '#9999dd' }
+function themeInactiveColor() { return theme ? "#cccccc"  : '#999999' }
+function themeBlueText()      { return theme ? "blue"     : '#4444ff' }
+function themeStdText()       { return theme ? "black"    : 'white' }
 
 function log(str) { console.log(str); }
 
 function getQueryParams() 
 {
-  console.log(window.location);
+  
+  log(window.location);
   let params = {};
   let queryString = window.location.search;
   if (queryString) 
@@ -45,22 +44,6 @@ function arrayBufferToBase64(buffer)
   return btoa(binary);
 }
 
-let urlPrefix = 'http://localhost:8081/';
-let refDate = null;
-let commsDelay = 0;
-let rotationLength = 0;
-let username = null;
-let planet = null;
-let app = null;
-let theme = 0; // 0=dark, 1=light
-const darkColor = '#222222';
-const lightColor = '#eeeeee';
-function themeBgColor()       { return theme ? lightColor : darkColor; }
-function themeButtonColor()   { return theme ? "#ccccff" : '#9999dd' }
-function themeInactiveColor() { return theme ? "#cccccc" : '#999999' }
-function themeBlueText()      { return theme ? "blue"    : '#4444ff' }
-function themeStdText()       { return theme ? "black"   : 'white' }
-
 function getSolNum(date) 
 {
   if (!date) date = new Date(); 
@@ -73,7 +56,7 @@ function commsDelayPassed(sentTime)
 {
   if (!(sentTime instanceof Date)) sentTime = new Date(sentTime);
   const now = new Date();
-  //console.log("CDPlease: " + ((now - sentTime) / 1000) + ", commsDelay: " + commsDelay + ", CDP ret: " + ((now - sentTime) / 1000 > commsDelay));
+  //log("CDPassed: " + ((now - sentTime) / 1000) + ", commsDelay: " + commsDelay + ", CDP ret: " + ((now - sentTime) / 1000 > commsDelay));
   return ((now - sentTime) / 1000 > commsDelay);
 }
 
@@ -87,14 +70,14 @@ function timeSinceSent(sentTime)
 function inTransit(obj) 
 { 
   const cdp = commsDelayPassed(obj.xmitTime, commsDelay);
-  //console.log("in transit? " + obj.xmitTime.toString() + " vs " + (new Date()).toString() + " CDP " + cdp);
+  //log("in transit? " + obj.xmitTime.toString() + " vs " + (new Date()).toString() + " CDP " + cdp);
   return obj.transmitted && !cdp; 
 }
 
 function timeInTransit(obj) 
 { 
   const tit = ((new Date()) - obj.xmitTime) / 1000; 
-  //console.log("timeInTransit is " + tit + " seconds");
+  //log("timeInTransit is " + tit + " seconds");
   return tit;
 }
 
@@ -136,7 +119,8 @@ function doDownload(urlPath, filename)
   // Create an invisible link to trigger the download
   var link = document.createElement("a");
   link.href = urlPrefix + urlPath;
-  console.log("attempting download of " + link.href);
+  
+  log("attempting download of " + link.href);
   // The desired filename for the download, BUT seems to be overridden by the Content-Disosition header set by server
   link.download = filename; 
   document.body.appendChild(link);
@@ -149,7 +133,6 @@ function doDownload(urlPath, filename)
 function newIM(content)
 {
 	let that = { };
-
   that.type = "IM";
   that.content = content;
   that.user = username;
@@ -160,15 +143,6 @@ function newIM(content)
   that.received = function () { return commsDelayPassed(that.xmitTime); }
   
   return that;
-}
-
-function newAttachment(filename, content)
-{ // Attachment doesn't have it's own planet as it's on its parent Report's planet
-	var that = { };
-
-  that.type = "Attachment";
-	that.filename = filename;
-  that.content = content;
 }
 
 /**
@@ -199,13 +173,12 @@ qx.Class.define("myapp.Application",
       const that = this; // "this" won't work inside the setTimeout callback
       app = this;
 
+      log("Welcome to MarsComm");
       // Enable logging in debug variant
       if (qx.core.Environment.get("qx.debug"))
       {
-        // support native logging capabilities, e.g. Firebug for Firefox
-        qx.log.appender.Native;
-        // support additional cross-browser console. Press F7 to toggle visibility
-        qx.log.appender.Console;
+        qx.log.appender.Native;  // support native logging capabilities, e.g. Firebug for Firefox
+        qx.log.appender.Console;  // support additional cross-browser console. Press F7 to toggle visibility
       }
 
       let queryParams = getQueryParams();
@@ -220,15 +193,14 @@ qx.Class.define("myapp.Application",
       }
       else
         urlPrefix = 'http://' + window.location.hostname + ':8081/';
-      console.log('urlPrefix=' + urlPrefix);
+      
+      log('urlPrefix=' + urlPrefix);
 
       commsDelay = await this.recvCommsDelay();
-      rotationLength = 2; //TODO put me back:  await this.recvRotationLength();
+      rotationLength = await this.recvRotationLength();
       refDate = new Date(await this.recvRefDate());
       this.refDate = refDate;
-      //this.startDay = daysSinceRef(this.startDate);
-      //console.log("commsDelay=" + this.commsDelay + ", startDay=" + this.startDay + ", startDate=" + this.startDate);
-      console.log("commsDelay=" + commsDelay + ", refDate=" + this.refDate);
+      log("commsDelay=" + commsDelay + ", refDate=" + this.refDate);
 
       // Create the main layout
       let doc = this.getRoot();
@@ -257,7 +229,7 @@ qx.Class.define("myapp.Application",
         this.timerId = setTimeout(async function() { that.changeSol(that, solNum); }, 900);
       }, this);
       topPanel.add(numberInput);
-      numberInput.setBackgroundColor(themeBgColor()); // somehow doesn't seem to work
+      numberInput.setBackgroundColor(themeBgColor()); // TODO: find different way since this somehow doesn't seem to work :(
       this.numberInput = numberInput;
 
       topPanel.add(new qx.ui.core.Spacer(), { flex: 1 });
@@ -274,8 +246,8 @@ qx.Class.define("myapp.Application",
       middleContainer.add(rightPanel);
 
       let reportNames = await this.recvReports();
-      let reportUIs = [];
-      console.log(reportNames);
+      let reportUIs = [];      
+      log(reportNames);
       reportNames.forEach((name, index) => 
       {
         let reportUI = new myapp.ReportUI(name, rightPanel, this);
@@ -290,9 +262,8 @@ qx.Class.define("myapp.Application",
       makeButton(topPanel, " ", () => this.toggleTheme(), themeButtonColor(), 16, this);
 
       this.loginButton = makeButton(topPanel, "Login", () => this.handleLoginLogout(), "#ffcccc", 16);
-      //this.planetButton = makeButton(topPanel, null, () => { }, "gray", 14, this, "myapp/Mars.png");
       this.planetIcon = new qx.ui.basic.Image("myapp/Earth.png");
-      //console.log("Planet padding = " + this.planetIcon.getPaddingTop()); 
+      //log("Planet padding = " + this.planetIcon.getPaddingTop()); 
       //this.planetIcon.setPadding(0);
       topPanel.add(this.planetIcon);
 
@@ -301,29 +272,13 @@ qx.Class.define("myapp.Application",
       else
         this.openLoginDialog();
       // Unfortunately we don't know what planet we are on until after we complete the login, and without knowing the
-      // planet we don't what to do with incoming reports.  So we can start listeners and such but they can't do shiite
+      // planet we don't what to do with incoming reports.  So we can start listeners and such but they can't do...anything
       // until the login is done.
       //await this.changeSol(this, getCurrentSolNum(this.startDay));
-      //this.checkTransmissions(); // should no longer be needed
 
     }, //-------------- end of main()
 
     sleep(ms) { return new Promise((resolve) => { setTimeout(resolve, ms); }); },
-
-    checkTransmissions()
-    {
-      console.log("checkTrans");
-      const that = this;
-      function checkEt()
-      {
-        console.log("check et out");
-        const reportUIs = that.reportUIs;
-        for (let i = 0; i < reportUIs.length; i++)
-          reportUIs[i].checkTransmission();
-        setTimeout(checkEt, 20*1000);
-      }
-      checkEt();
-    },
 
     getReportUIbyName(name)
     {
@@ -336,19 +291,20 @@ qx.Class.define("myapp.Application",
     syncDisplay() 
     { 
       const sol = this.sol;
-      console.log("this display styncs");
+      
+      log("this display styncs");
       this.chatUI.changeSol(sol.ims);
 
       const reportUIs = this.reportUIs;
       for (let i = 0; i < reportUIs.length; i++)
         reportUIs[i].reset();
-      console.log("reset THIS");
+      
       for (let i = 0; i < sol.reports.length; i++)
       {
         const reportUI = this.getReportUIbyName(sol.reports[i].name);
         if (reportUI)
-        { 
-          console.log("update ReportUI for " + sol.reports[i].name);
+        {       
+          log("update ReportUI for " + sol.reports[i].name);
           reportUI.update(sol.reports[i]);
         }
       }
@@ -368,9 +324,9 @@ qx.Class.define("myapp.Application",
     async changeSol(that, solNum) 
     { 
       that.solNum = solNum;
-      console.log("Sol supposedly set to " + that.solNum);
+      log("Sol supposedly set to " + that.solNum);
       const sol = await that.recvSol(solNum);
-      //console.log(sol); 
+      //log(sol); 
       that.sol = sol;
       that.syncDisplay();
     },    
@@ -387,17 +343,15 @@ qx.Class.define("myapp.Application",
     doMessage(chatPanel, chatInput) 
     {
       let message = chatInput.getValue().trim();
-      if (!message) {
+      if (!message) 
+      {
         alert("Please enter a message.");
         return;
       }
 
       // Simple markdown and emoticon parsing
       let formattedMessage = this.parseMessage(message);
-      let newMessage = new qx.ui.basic.Label().set({
-        value: formattedMessage,
-        rich: true
-      });
+      let newMessage = new qx.ui.basic.Label().set({ value: formattedMessage, rich: true });
       chatPanel.add(newMessage);
       chatInput.setValue("");
       this.sendIM(formattedMessage);
@@ -422,7 +376,8 @@ qx.Class.define("myapp.Application",
 
     async doGET(endpoint)
     {
-      console.log("GETsome: " + endpoint);
+      
+      log("GETsome: " + endpoint);
       try 
       {
         const response = await fetch(urlPrefix + endpoint, 
@@ -433,8 +388,8 @@ qx.Class.define("myapp.Application",
 
         if (response.ok) 
         {
-            const result = await response.json();
-            console.log('GET suckcessfool: ' + JSON.stringify(result));
+            const result = await response.json();            
+            log('GET succcessful: ' + JSON.stringify(result));
             return result;
         } else 
         {
@@ -454,7 +409,8 @@ qx.Class.define("myapp.Application",
         body.username = username;
         body.token = this.token;
       }
-      console.log("POSTality: " + JSON.stringify(body));
+      
+      log("POSTality: " + JSON.stringify(body));
       try 
       {
         const response = await fetch(urlPrefix + endpoint, 
@@ -468,12 +424,12 @@ qx.Class.define("myapp.Application",
         if (response.ok) 
         {
           const result = await response.json(); // text();
-          console.log('POST suckcessfool: ' + JSON.stringify(result));
+          log('POST succcessful: ' + JSON.stringify(result));
           return result;
         } else 
-        {
-          console.log('POST most epically failed.');
-          console.log(JSON.stringify(response));
+        {          
+          log('POST most epically failed.');
+          log(JSON.stringify(response));
         }
       } catch (error) { console.error('POSTal exception:', error); }
       return null;
@@ -516,7 +472,7 @@ qx.Class.define("myapp.Application",
 
     async sendAttachments(report, files)
     {
-      console.log("sending " + files.length + " dataers");
+      log("sending " + files.length + " dataers");
       var formData = new FormData();
       for (let i = 0; i < files.length; i++)
         formData.append("files", files[i]);
@@ -529,7 +485,8 @@ qx.Class.define("myapp.Application",
       //req.setRequestHeader("Content-Type", "multipart/form-data");
       req.setRequestData(formData);
       
-      req.addListener("success", function(e) { console.log("Upload successfoo!"); } );
+      req.addListener("success", function(e) { 
+        log("Upload successfoo!"); } );
       req.addListener("fail",    function(e) { console.error("Upload failed miserably:", e); } );
     
       req.send();
@@ -538,11 +495,7 @@ qx.Class.define("myapp.Application",
 
     async transmitReport(report)
     {
-      const body = 
-      {
-        //username: "matts",
-        //token: "Boken"
-      };
+      const body = { };
       this.doPOST('reports/transmit/' + report.name, body);
     },
 
@@ -557,17 +510,12 @@ qx.Class.define("myapp.Application",
       return sol; 
     },
 
-    async recvReports()         { return await this.doGET('reports'); },
-
+    async recvReports()         { return  await this.doGET('reports'); },
     async recvCommsDelay()      { return (await this.doGET('comms-delay')).commsDelay; },
-
     async recvRotationLength()  { return (await this.doGET('rotation-length')).rotationLength; },
-
     async recvRefDate()         { return (await this.doGET('ref-date')).refDate; },
-
-    async recvReportTemplates() { return await this.doGET('reports/templates'); },
-
-    async recvAttachments()     { return await this.doGET('attachments/' + planet + '/' + getSolNum()); },
+    async recvReportTemplates() { return  await this.doGET('reports/templates'); },
+    async recvAttachments()     { return  await this.doGET('attachments/' + planet + '/' + getSolNum()); },
     
 
     //--------------------------------------------------------------------------------------------
@@ -649,9 +597,9 @@ qx.Class.define("myapp.Application",
         // eventSource is tied to login because the planet can change
         this.eventSource = new EventSource(urlPrefix + 'events/' + planet);
         this.eventSource.onmessage = function(event) 
-        {
-          console.log("SSE received!!!!");
-          console.log(event.data);
+        {          
+          log("SSE received!!!!");
+          log(event.data);
           const obj = JSON.parse(event.data);
           if (app.isCurrentSol() /* && obj.user !== username */) // ignore new messages if we aren't looking at the current Sol, or they they are coming from us 
             if (obj.type === "IM")
@@ -671,7 +619,6 @@ qx.Class.define("myapp.Application",
         alert(result.message);
       else 
         alert("Login failure for " + usernameIn);
-
     },
 
     logout() 
@@ -684,7 +631,6 @@ qx.Class.define("myapp.Application",
       this.loginButton.setLabel("Login");
       setBGColor(this.loginButton, "#ffcccc");
       this.openLoginDialog();
-      // Add any additional logout logic here
     },
 
     //--------------------------------------------------------------------------------------------
@@ -692,14 +638,14 @@ qx.Class.define("myapp.Application",
 
     async createZipFromReports(reportUIs) 
     {
-      // Create a new JSZip instance
-      console.log("CREATE THIS from " + reportUIs.length + " RUIs");
+      // Create a new JSZip instance      
+      log("create zip from " + reportUIs.length + " RUIs");
       const zip = new JSZip();
 
       // Add each object as a file to the zip
       reportUIs.forEach(reportUI => 
       {
-        console.log("  RUI " + reportUI.name);
+        log("  RUI " + reportUI.name);
         const report = reportUI.report;
         if (report)
         {
@@ -712,11 +658,11 @@ qx.Class.define("myapp.Application",
       attachments.forEach(attachment =>
       {
         const fileName = attachment.reportName + '/' + attachment.filename;
-        zip.file(fileName, attachment.content, {base64: true});
+        zip.file(fileName, attachment.content, {base64: true} );
       });
 
       // Generate the zip file
-      const zipBlob = await zip.generateAsync({ type: "blob" });
+      const zipBlob = await zip.generateAsync( { type: "blob" } );
 
       // Create a download link for the zip file
       const downloadLink = document.createElement("a");
@@ -727,8 +673,7 @@ qx.Class.define("myapp.Application",
       document.body.appendChild(downloadLink);
       downloadLink.click();
       document.body.removeChild(downloadLink);
-      console.log("RUIs are DONE DUDE");
-
+      log("RUIs are DONE DUDE");
     },
 
     async downloadAttachments()
@@ -736,17 +681,6 @@ qx.Class.define("myapp.Application",
       const href = 'attachments/zip/' + planet + '/' + this.getUiSolNum();
       const filename = 'attachments' + this.getUiSolNum() + planet + '.zip';
       doDownload(href, filename);
-      /*
-      // Create an invisible link to trigger the download
-      var link = document.createElement("a");
-      link.href = urlPrefix + 'attachments/zip/' + planet + '/' + this.getUiSolNum();
-      console.log("attempting download of " + link.href);
-      // The desired filename for the download, BUT seems to be overridden by the Content-Disosition header set by server
-      link.download = 'attachments' + this.getUiSolNum() + planet + '.zip'; 
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      */
     }
   }
 });
@@ -813,12 +747,12 @@ qx.Class.define("myapp.ChatUI",
   {
     chatPanel: null,
 
-    reset() { try { this.chatPanel.removeAll(); } catch (e) { console.log("clean et up"); } this.ims = null; },
+    reset() { try { this.chatPanel.removeAll(); } catch (e) { log("clean et up"); } this.ims = null; },
 
     changeSol(ims)
-    {
-      console.log("changing Sol to " + app.getUiSolNum() + "; update dat chat wit " + ims.length + " ims");
-      console.log("currentSolNum is " + getSolNum());
+    { 
+      log("changing Sol to " + app.getUiSolNum() + "; update chat with " + ims.length + " ims");
+      log("currentSolNum is " + getSolNum());
       this.reset();
       this.ims = ims;
       const isCurrentSol = getSolNum() === app.getUiSolNum();
@@ -829,10 +763,12 @@ qx.Class.define("myapp.ChatUI",
 
     addIM(im)
     {
-      console.log("addIM: " + im.content + " from planet " + im.planet + " (we are on " + planet + ")");
+      
+      log("addIM: " + im.content + " from planet " + im.planet + " (we are on " + planet + ")");
       if (!im.content) return;
 
-      console.log("  commsDelay=" + commsDelay + ", tit=" + timeInTransit(im));
+      
+      log("  commsDelay=" + commsDelay + ", tit=" + timeInTransit(im));
       const timeRemaining = commsDelay - timeInTransit(im);
       if (im.planet === planet || !inTransit(im))
       {
@@ -844,15 +780,15 @@ qx.Class.define("myapp.ChatUI",
         label.setTextColor(color);
         label.setFont(new qx.bom.Font(16, ["Arial"]));
         container.add(label);  
-        //if (inTransit(im)) console.log("  still in transit!")
-        //else console.log("time since sent is " + timeSinceSent(im.xmitTime));
+        log("  still in transit!")
+        log("time since sent is " + timeSinceSent(im.xmitTime));
         if (inTransit(im)) 
           startXmitProgressDisplay(timeRemaining, container, 55);
         this.chatPanel.add(container);
       }
-      else // IM is NOT from this planet and has not yet arrived, so wait for et
-      {
-        console.log("scheduling IM arrival in " + timeRemaining);
+      else // IM is NOT from this planet and has not yet arrived, so wait for it
+      {        
+        log("scheduling IM arrival in " + timeRemaining);
         setTimeout(() => this.addIM(im), timeRemaining*1000);
       }
     },
@@ -862,7 +798,8 @@ qx.Class.define("myapp.ChatUI",
       let message = that.chatInput.getValue();
       if (message === null) return;
       message = message.trim();
-      console.log("doing message: " + message);
+      
+      log("doing message: " + message);
       if (!message) 
       {
         alert("Please enter a message.");
@@ -870,12 +807,12 @@ qx.Class.define("myapp.ChatUI",
       }
 
       that.chatInput.setValue("");
-      // Simple markdown and emoticon parsing
       let formattedMessage = that.parseMessage(message);
       const im = newIM(formattedMessage);
-      console.log(im);
-      //that.addIM(im);           // add IM to chatPanel; don't need to add locally as we'll add it on the SSE
-      that.ims.push(im);        // add IM to local model
+      
+      log(im);
+      //that.addIM(im);    // don't need to add locally as we'll add it on the SSE
+      that.ims.push(im);   // add IM to local model
       app.sendIM(im); // send IM to server
     },
 
@@ -898,7 +835,6 @@ qx.Class.define("myapp.ChatUI",
       message = message.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
       message = message.replace(/__(.*?)__/g, '<em>$1</em>');
       message = message.replace(/`(.*?)`/g, '<code>$1</code>');
-
       return message;
     },
   }
@@ -936,27 +872,24 @@ qx.Class.define("myapp.ReportUI",
   construct: function(name, parentContainer) 
   {
     const that = this;
-    this.base(arguments); // Call superclass constructor
+    this.base(arguments); // call superclass constructor
     this.name = name;
 
     let container = new qx.ui.container.Composite(new qx.ui.layout.HBox(10));
     parentContainer.add(container);
     this.container = container;
 
-    //let icon = new qx.ui.basic.Image("icon/22/actions/document-open.png");
-    //container.add(icon);
-    //this.icon = icon;
-
     let fsb = new qx.ui.form.FileSelectorButton("Upload...");
     fsb.setMultiple(true);
     fsb.addListener("changeFileSelection", function(e) 
     {
       let files = e.getData();
-      console.log("there are actually " + files.length + " attachments");
+      
+      log("there are actually " + files.length + " attachments");
       app.sendAttachments(that.report, files);
     }, this);
     container.add(fsb);
-    //fsb.setEnabled(false); // disabling the FileSelectorButton somehow prevents it working properly even after it's re-enabled -- FARUK
+    //fsb.setEnabled(false); // disabling the FileSelectorButton somehow prevents it working properly even after it's re-enabled
     this.fsButton = fsb;
 
     this.amanButton = makeButton(container, "00", () => that.openAttachManager(), themeButtonColor(), 14, this);
@@ -1000,34 +933,30 @@ qx.Class.define("myapp.ReportUI",
     label:      null,
     slabel:     null,
 
-    state: "Unused", // ReportUI states: Unused, Empty, Populated, Transmitted, Received
+    state: "Unused", // ReportUI states: Unused, Empty, Populated, Transmitted, Received, Approved
     report: null,
 
-    reset() { /* console.log("reset"); */ this.realizeState("Unused"); },
+    reset() { /* log("reset"); */ this.realizeState("Unused"); },
 
     xmitDone(container) 
     { 
-      //if (this.xmitProgress) 
-      //{ 
-      //  container.remove(this.xmitProgress); 
-      //  this.xmitProgress = null; 
       if (this.report.approved)
         this.realizeState("Approved");
       else
         this.realizeState("Received");
-      //} 
     },
 
     onChange() 
     { 
-      console.log("something changed, Holmez");
+      
+      log("something changed, Holmez");
       app.sendReport(this.report);
       //this.realizeState(); // SSE will cause UI to be updated
     },
 
     update(report) // called when the SolNum is changed, and when a transmitted Report arrives 
     { //  instead of copying state out, we need to keep a reference to the report so that we can later update it e.g. when the xmit button is pressed
-      if (report.transmitted) console.log("changeSol => new report incoming: " + report.name);
+      if (report.transmitted) log("changeSol => new report incoming: " + report.name);
       this.report = report;
       if (this.xmitProgress) this.xmitProgress.forceDone();
       this.realizeState();
@@ -1037,8 +966,10 @@ qx.Class.define("myapp.ReportUI",
 
     computeState()
     {
-      if (this.report.transmitted) console.log("compute THIS: " + JSON.stringify(this.report));
-      if (this.report.transmitted) console.log("transmitted..." + this.report.xmitTime.toString() + " " + commsDelayPassed(this.report.xmitTime, this.commsDelay));
+      if (this.report.transmitted) 
+      log("compute this: " + JSON.stringify(this.report));
+      if (this.report.transmitted) 
+      log("transmitted..." + this.report.xmitTime.toString() + " " + commsDelayPassed(this.report.xmitTime, this.commsDelay));
       if (this.report.transmitted) 
         if (commsDelayPassed(this.report.xmitTime)) 
           if (this.report.approved) return "Approved";
@@ -1053,7 +984,8 @@ qx.Class.define("myapp.ReportUI",
     {
       const isCurrentSol = this.isCurrentSol();
       this.state = forcedState ? forcedState : this.computeState();
-      if (this.report && this.report.transmitted) console.log("realizing new state: " + this.state + ", isCurrentSol=" + isCurrentSol);
+      if (this.report && this.report.transmitted) 
+      log("realizing new state: " + this.state + ", isCurrentSol=" + isCurrentSol);
       const viewEnabled = this.state !== "Unused"; // edit button now works in View mode for non-current Sols
       const editEnabled = viewEnabled && isCurrentSol;
       const aprvEnabled = editEnabled && (this.state === "Received" || this.state === "Approved");
@@ -1119,29 +1051,19 @@ qx.Class.define("myapp.ReportUI",
     removeAttachment(attachment)
     {
       this.report.attachments.splice(this.report.attachments.indexOf(attachment), 1);
-      console.log("removing attachment -- after: ");
-      console.log(this.report.attachments);
+      log("removing attachment -- after: ");
+      log(this.report.attachments);
     },
 
-
     setContent(content)
-    {
-      console.log("setting model content: " + content);
+    {      
+      log("setting model content: " + content);
       this.report.content = content;
       this.onChange();
     },
 
     async setContentFromBored() { this.setContent(await navigator.clipboard.readText()); },
 
-    checkTransmission()
-    {
-      if (this.state === "Transmitted") console.log(commsDelayPassed(this.report.xmitTime));
-      if (this.state === "Transmitted" && commsDelayPassed(this.report.xmitTime)) 
-      {
-        console.log("comms delay has passed for " + this.name)
-        this.realizeState("Received");
-      }
-    }
   }
 });
 
@@ -1202,16 +1124,17 @@ qx.Class.define("myapp.CKEditor",
       {
         //let containerHeight = this.getContentElement().getDomElement().clientHeight;
         let containerHeight = this.getBounds().height - 50;
-        console.log("winder size: " + containerHeight);
+        
+        log("winder size: " + containerHeight);
         this.editor.resize('100%', containerHeight);
       }
     },
 
     // Method to set data into the editor
     setContent: function(data) 
-    {
-      console.log("setting editor content: " + data);
-      console.log("this.editor" + this.editor);
+    { 
+      log("setting editor content: " + data); 
+      log("this.editor" + this.editor);
       if (this.editor) 
         this.editor.setData(data);
       else 
@@ -1239,7 +1162,8 @@ qx.Class.define("myapp.CKEditorWindow",
     this.center();
 
     this.parent = parent;
-    console.log("new editor with content:\n" + content);
+    
+    log("new editor with content:\n" + content);
     // Add the CKEditor to the window and set content after the editor is actually created
     const ckEditor = new myapp.CKEditor(function () { ckEditor.setContent(content); });
     this.ckEditor = ckEditor;
@@ -1272,7 +1196,7 @@ qx.Class.define("myapp.CKEditorWindow",
     onOK: function() 
     {
       let content = this.ckEditor.getContent();
-      console.log("onOK setting content: " + content);
+      log("onOK setting content: " + content);
       this.parent.setContent(content);
       this.close();
     },
@@ -1287,7 +1211,8 @@ qx.Class.define("myapp.CKEditorWindow",
 qx.Class.define("myapp.CircularProgress", {
   extend: qx.ui.core.Widget,
 
-  construct: function() {
+  construct: function() 
+  {
     this.base(arguments);
     this._setLayout(new qx.ui.layout.Canvas());
     this.progress = 0;
@@ -1296,8 +1221,10 @@ qx.Class.define("myapp.CircularProgress", {
     this.addListenerOnce("appear", this.draw, this);
   },
 
-  properties: {
-    progress: {
+  properties: 
+  {
+    progress: 
+    {
       check: "Number",
       init: 0,
       apply: "applyProgress"
@@ -1307,17 +1234,20 @@ qx.Class.define("myapp.CircularProgress", {
   members: {
     progress: null,
 
-    _createContentElement: function() {
+    _createContentElement: function() 
+    {
       let canvas = new qx.html.Element("canvas");
       return canvas;
     },
 
-    applyProgress: function(value) {
+    applyProgress: function(value) 
+    {
       this.progress = value;
       this.draw();
     },
 
-    draw: function() {
+    draw: function() 
+    {
       let canvas = this.getContentElement().getDomElement();
       let context = canvas.getContext("2d");
 
@@ -1357,7 +1287,8 @@ qx.Class.define("myapp.CircularProgress", {
 
 function startXmitProgressDisplay(commsDelay, parentContainer, size, onDone)
 {
-  console.log("starting Xmit display for " + commsDelay);
+  
+  log("starting Xmit display for " + commsDelay);
   let circularProgress = new myapp.CircularProgress();
   circularProgress.setWidth(size);
   circularProgress.setHeight(size);
@@ -1379,7 +1310,7 @@ function startXmitProgressDisplay(commsDelay, parentContainer, size, onDone)
   });
   timer.start();
 
-  circularProgress.forceDone = function () { progress = 1.1;}
+  circularProgress.forceDone = function () { progress = 1.1; }
 
   return circularProgress;
 }
@@ -1390,7 +1321,8 @@ qx.Class.define("myapp.AttachmentManager",
 {
   extend: qx.ui.window.Window,
 
-  construct: function(reportUI, attachments, canEdit) {
+  construct: function(reportUI, attachments, canEdit) 
+  {
     this.base(arguments, "Attachment Manager");
     this.setLayout(new qx.ui.layout.VBox(10));
     this.setWidth(400);
@@ -1403,8 +1335,10 @@ qx.Class.define("myapp.AttachmentManager",
     this.__attachmentList.setAllowGrowY(true);
     this.__attachmentList.setHeight(200);
     this.__attachmentList.setSelectionMode("multi");
-    console.log("AttachMan sees " + attachments.length + " attachments");
-    attachments.forEach(attachment => {
+    
+    log("AttachMan sees " + attachments.length + " attachments");
+    attachments.forEach(attachment => 
+    {
       let listItem = new qx.ui.form.ListItem(attachment.filename);
       listItem.setUserData("attachment", attachment);
       this.__attachmentList.add(listItem);
@@ -1421,30 +1355,10 @@ qx.Class.define("myapp.AttachmentManager",
     if (canEdit) makeButton(bbar, "Delete",   this.__onDelete,   themeButtonColor(), 14, this);
     makeButton(bbar, "Close",    this.close,        themeButtonColor(), 14, this);
     this.add(bbar);
-
-/*    // Add download button
-    let downloadButton = new qx.ui.form.Button("Download");
-    downloadButton.addListener("execute", this.__onDownload, this);
-    this.add(downloadButton);
-
-    if (canEdit)
-    {
-      // Add delete button
-      let deleteButton = new qx.ui.form.Button("Delete");
-      deleteButton.addListener("execute", this.__onDelete, this);
-      this.add(deleteButton);
-    }
-
-    // Close button
-    let closeButton = new qx.ui.form.Button("Close");
-    closeButton.addListener("execute", function() {
-      this.close();
-    }, this);
-    this.add(closeButton);
-  */
   },
 
-  members: {
+  members: 
+  {
     __attachmentList: null,
 
     __onDownload: function() 
@@ -1456,13 +1370,6 @@ qx.Class.define("myapp.AttachmentManager",
         const attachment = selectedItem.getUserData("attachment");
         let downloadUrl = "/download?filename=" + encodeURIComponent(attachment.getFilename());
         doDownload(downloadUrl, attachment.filename);
-
-        /*let link = document.createElement("a");
-        link.href = downloadUrl;
-        link.download = attachment.getFilename();
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link); */
       });       
     },
 
@@ -1480,67 +1387,3 @@ qx.Class.define("myapp.AttachmentManager",
     }
   }
 });
-
-
-/*
-createBtn : function ( txt, clr, width, cb, ctx )  {
-  var btn = new qx.ui.form.Button ( "<b style='color: white'>" + txt + "</b>" );
-  btn.set ( { width: width, cursor: 'pointer' } );
-  let lbl = btn.getChildControl ( "label" );
-  lbl.setRich ( true );
-  btn.addListenerOnce ( "appear", function ( )  {
-    this.setBGColor ( btn, "#AAAAAA00", "#AAAAAA00" );
-  },this );
-  btn.addListener ( "mouseover", function ( )  {
-    this.setBGColor ( btn, clr, clr );
-  },this );
-  btn.addListener ( "mouseout", function ( )  {
-    this.setBGColor ( btn, "#AAAAAA00", "#AAAAAA00" );
-  },this );
-  btn.addListener ( "execute", function ( e )  {
-     cb.call ( this );
-  }, ctx );
-  return btn;
-},
-
-    fsb.addListener("changeFileSelection", function(e) 
-    {
-      let files = e.getData();
-      console.log("there are actually " + files.length + " attachments");
-      if (files && files.length > 0) 
-      {
-        const file = files[0];
-        console.log("Selected file:", file);
-        let isText = false;
-        const reader = new FileReader(); 
-        reader.addEventListener('load', () => 
-        { 
-          if (isText)
-          {
-            that.report.content = reader.result;
-            console.log("The report content is:\n" + that.report.content); 
-            that.onChange();
-          }
-          else
-          {
-            console.log("attach THIS: " + file.name);
-            if (!that.report.attachNames) that.report.attachNames = [];
-            that.report.attachNames.push(file.name);
-            //const str = arrayBufferToBase64(reader.result);  // reader.result.toString('base64')
-            //app.sendAttachment(that.report.name, file.name, str); // convert attachment to base64 string from the get go
-            console.log("attempting to send " + files.length + " attachments");
-            app.sendAttachments(that.report.name, files);
-          }
-        });
-        const ext = file.name.split('.').pop();
-        if (ext === "txt" || ext === "md" || ext === "rtf")
-        {
-          isText = true;
-          reader.readAsText(file);
-        }
-        else
-          reader.readAsArrayBuffer(file);
-      }
-    }, this);
-
-*/
