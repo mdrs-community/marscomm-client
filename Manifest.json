@@ -3,12 +3,12 @@
   "info" :
   {
     "name" : "myapp",
-    "summary" : "undefined",
-    "description" : "undefined",
+    "summary" : "Communications system for use at the Mars Desert Research Station",
+    "description" : "Communications system for use at the Mars Desert Research Station",
     "homepage" : "undefined",
     "license" : "MIT license",
-    "authors" : [],
-    "version" : "1.0.0"
+    "authors" : [ { "name": "Matthew Storch", "email": "matthewstorch1@gmail.com" }],
+    "version" : "0.9.0"
   },
 
   "provides" :
