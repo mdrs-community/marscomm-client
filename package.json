@@ -1,5 +1,5 @@
 {
-  "dependencies": {
-    "jszip": "^3.10.1"
+  "devDependencies": {
+    "@qooxdoo/framework": "^7.7.2"
   }
 }
