@@ -1,5 +1,7 @@
 # MarsComm Client
 
+![screenshot](./screenshot.png)
+
 The MarsComm client is a single-page JavaScript application that uses the Qooxdoo framework (v7.7).
 It is only designed to work with the MarsComm server.
 To further develop this sofware, you must have at least a basic familiarity with Qooxdoo.  
