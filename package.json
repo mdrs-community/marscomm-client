@@ -1,4 +1,7 @@
 {
+  "name": "marscomm-client",
+  "version": "0.1.0",
+  "license": "MIT",
   "devDependencies": {
     "@qooxdoo/framework": "^7.7.2"
   }
