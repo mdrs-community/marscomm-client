@@ -187,15 +187,15 @@ qx.Class.define("myapp.Application",
       let queryParams = getQueryParams();
       if (queryParams.theme) 
         theme = Number(queryParams.theme);
-      if (queryParams.serverHost)
-      {
-        urlPrefix = 'http://' + queryParams.serverHost;
-        if (queryParams.serverPort)
-          urlPrefix += ':' + queryParams.serverPort;
-        urlPrefix += '/';
-      }
-      else
-        urlPrefix = 'http://' + window.location.hostname + ':8081/';
+      let protocol = 'http';
+      let host = window.location.hostname;
+      let port = 8081;
+
+      if (queryParams.protocol) protocol = queryParams.protocol;      
+      if (queryParams.serverHost) host = queryParams.serverHost;
+      if (queryParams.serverPort) port = queryParams.serverPort;
+
+      urlPrefix = protocol + '://' + host + ':' + port + '/';
       
       log('urlPrefix=' + urlPrefix);
 
