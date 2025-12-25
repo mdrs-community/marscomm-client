@@ -202,6 +202,7 @@ qx.Class.define("myapp.Application",
       commsDelay     = await this.recvCommsDelay();
       crewNum        = await this.recvCrewNum();
       rotationLength = await this.recvRotationLength();
+      const organization = await this.recvOrganization();
       refDate = new Date(await this.recvRefDate());
       this.refDate = refDate;
       log("commsDelay=" + commsDelay + ", refDate=" + this.refDate);
@@ -218,9 +219,13 @@ qx.Class.define("myapp.Application",
       mainContainer.add(topPanel);
       this.topPanel = topPanel;
 
-      let logo = new qx.ui.basic.Image("myapp/MDRSlogo.jpg");
-      topPanel.add(logo); 
-      const mcLabel = makeLabel(topPanel, "MarsComm", themeBlueText(), 24);
+      const logoFile = (organization === "LunAres") ? "myapp/LunAreslogo.png" : "myapp/MDRSlogo.jpg";
+      let logo = new qx.ui.basic.Image(logoFile);
+      logo.setWidth(30);
+      logo.setHeight(30);
+      logo.setScale(true);
+      topPanel.add(logo);
+      const mcLabel = makeLabel(topPanel, organization + " MarsComm", themeBlueText(), 24);
       topPanel.add(new qx.ui.core.Spacer(), { flex: 1 });
       makeLabel(topPanel, "Crew: " + crewNum, themeBlueText(), 24);
       topPanel.add(new qx.ui.core.Spacer(), { flex: 0 });
@@ -242,7 +247,7 @@ qx.Class.define("myapp.Application",
       let middleContainer = new qx.ui.container.Composite(new qx.ui.layout.HBox());
       middleContainer.setDecorator("main");
       mainContainer.add(middleContainer, { flex: 1 });
-      this.chatUI = new myapp.ChatUI(middleContainer, this);
+      this.chatUI = new myapp.ChatUI(middleContainer, this, organization);
 
       let rightPanel = new qx.ui.container.Composite(new qx.ui.layout.VBox(10));
       rightPanel.setPadding(10);
@@ -519,6 +524,7 @@ qx.Class.define("myapp.Application",
     async recvCommsDelay()      { return (await this.doGET('comms-delay')).commsDelay; },
     async recvCrewNum()         { return (await this.doGET('crew-num')).crewNum; },
     async recvRotationLength()  { return (await this.doGET('rotation-length')).rotationLength; },
+    async recvOrganization()    { return (await this.doGET('organization')).organization; },
     async recvRefDate()         { return (await this.doGET('ref-date')).refDate; },
     async recvReportTemplates() { return  await this.doGET('reports/templates'); },
     async recvAttachments()     { return  await this.doGET('attachments/' + planet + '/' + getSolNum()); },
@@ -695,9 +701,9 @@ qx.Class.define("myapp.Application",
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
 
-qx.Class.define("myapp.ChatUI", 
-{ extend: qx.core.Object, 
-  construct: function(parentContainer) 
+qx.Class.define("myapp.ChatUI",
+{ extend: qx.core.Object,
+  construct: function(parentContainer, app, organization)
   {
     const that = this;
 
@@ -710,15 +716,21 @@ qx.Class.define("myapp.ChatUI",
     chatPanel.setPadding(10);
     this.chatPanel = chatPanel;
     chatPanel.setDecorator("main");
-    chatPanel.getContentElement().addClass("background-composite"); // sets CSS class defined in index.html
-    /*chatPanel.getContentElement().setStyles(
-    {
-      "background-image": "url(resource/myapp/MDRS-2017.jpg)",
-      "background-size": "cover", // Ensures the image covers the entire container
-      "background-repeat": "no-repeat",
-      "background-position": "center",
-      "background-opacity": "0.25" // Adjust this value to set the desired transparency
-    });*/
+
+    // Set background image based on organization
+    const bgImage = (organization === "LunAres") ? "resource/myapp/LunAres-facility.png" : "resource/myapp/MDRS-2017.jpg";
+    chatPanel.addListenerOnce("appear", function() {
+      const domElement = chatPanel.getContentElement().getDomElement();
+      domElement.style.setProperty("position", "relative");
+
+      // Create background layer using ::before-like approach
+      const bgDiv = document.createElement("div");
+      bgDiv.style.cssText = "content: ''; position: absolute; top: 0; left: 0; width: 100%; height: 100%; " +
+                            "background-image: url(" + bgImage + "); background-size: cover; " +
+                            "background-repeat: no-repeat; opacity: 0.2; z-index: -1; pointer-events: none;";
+      domElement.insertBefore(bgDiv, domElement.firstChild);
+    });
+
     chatContainer.add(chatPanel, { flex: 2 });
     let chatScroll = new qx.ui.container.Scroll();
     chatScroll.add(chatPanel);
