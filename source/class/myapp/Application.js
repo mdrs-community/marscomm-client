@@ -725,19 +725,8 @@ qx.Class.define("myapp.ChatUI",
     this.chatPanel = chatPanel;
     chatPanel.setDecorator("main");
 
-    // Set background image based on organization
-    const bgImage = (organization === "LunAres") ? "resource/myapp/LunAres-facility.png" : "resource/myapp/MDRS-2017.jpg";
-    chatPanel.addListenerOnce("appear", function() {
-      const domElement = chatPanel.getContentElement().getDomElement();
-      domElement.style.setProperty("position", "relative");
-
-      // Create background layer using ::before-like approach
-      const bgDiv = document.createElement("div");
-      bgDiv.style.cssText = "content: ''; position: absolute; top: 0; left: 0; width: 100%; height: 100%; " +
-                            "background-image: url(" + bgImage + "); background-size: cover; " +
-                            "background-repeat: no-repeat; opacity: 0.2; z-index: -1; pointer-events: none;";
-      domElement.insertBefore(bgDiv, domElement.firstChild);
-    });
+    // Set background image based on organization via CSS pseudo-element (see index.html)
+    chatPanel.getContentElement().addClass(organization === "LunAres" ? "bg-lunares" : "bg-mdrs");
 
     chatContainer.add(chatPanel, { flex: 2 });
     let chatScroll = new qx.ui.container.Scroll();
