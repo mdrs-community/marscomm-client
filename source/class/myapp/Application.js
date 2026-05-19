@@ -203,6 +203,7 @@ qx.Class.define("myapp.Application",
       crewNum        = await this.recvCrewNum();
       rotationLength = await this.recvRotationLength();
       const organization = await this.recvOrganization();
+      const version      = await this.recvVersion();
       refDate = new Date(await this.recvRefDate());
       this.refDate = refDate;
       log("commsDelay=" + commsDelay + ", refDate=" + this.refDate);
@@ -226,6 +227,12 @@ qx.Class.define("myapp.Application",
       logo.setScale(true);
       topPanel.add(logo);
       const mcLabel = makeLabel(topPanel, organization + " MarsComm", themeBlueText(), 24);
+      const versionBox = new qx.ui.container.Composite(new qx.ui.layout.VBox(0));
+      versionBox.setPaddingTop(4);
+      const fmtVer = function(info) { return info.tag + ' (' + info.hash + ') ' + info.date; };
+      makeLabel(versionBox, 'server: ' + fmtVer(version.server), themeInactiveColor(), 10);
+      makeLabel(versionBox, 'client: ' + fmtVer(version.client), themeInactiveColor(), 10);
+      topPanel.add(versionBox);
       topPanel.add(new qx.ui.core.Spacer(), { flex: 1 });
       makeLabel(topPanel, "Crew: " + crewNum, themeBlueText(), 24);
       topPanel.add(new qx.ui.core.Spacer(), { flex: 0 });
@@ -525,6 +532,7 @@ qx.Class.define("myapp.Application",
     async recvCrewNum()         { return (await this.doGET('crew-num')).crewNum; },
     async recvRotationLength()  { return (await this.doGET('rotation-length')).rotationLength; },
     async recvOrganization()    { return (await this.doGET('organization')).organization; },
+    async recvVersion()         { return  await this.doGET('version'); },
     async recvRefDate()         { return (await this.doGET('ref-date')).refDate; },
     async recvReportTemplates() { return  await this.doGET('reports/templates'); },
     async recvAttachments()     { return  await this.doGET('attachments/' + planet + '/' + getSolNum()); },
