@@ -455,7 +455,7 @@ qx.Class.define("myapp.Application",
     async sendIM(im)
     {
       const body = { message: im.content };
-      this.doPOST('ims', body);
+      return await this.doPOST('ims', body);
     },
 
     async sendLogin(username, password)
@@ -615,25 +615,7 @@ qx.Class.define("myapp.Application",
 
         // set up server-sent events
         // eventSource is tied to login because the planet can change
-        this.eventSource = new EventSource(urlPrefix + 'events/' + planet);
-        this.eventSource.onmessage = function(event) 
-        {          
-          log("SSE received!!!!");
-          log(event.data);
-          const obj = JSON.parse(event.data);
-          if (app.isCurrentSol() /* && obj.user !== username */) // ignore new messages if we aren't looking at the current Sol, or they they are coming from us 
-            if (obj.type === "IM")
-            {
-              obj.xmitTime = new Date(obj.xmitTime); // ALWAYS have to fix the faruking date.  ALWAYS
-              app.chatUI.addIM(obj);
-              app.chatUI.ims.push(obj);
-            }
-            else if (obj.type === "Report")
-            {
-              obj.xmitTime = new Date(obj.xmitTime); // ALWAYS have to fix the faruking date.  ALWAYS
-              app.getReportUIbyName(obj.name).update(obj);
-            }
-        }
+        this.setupSSE();
       } 
       else if (result && result.message)
         alert(result.message);
@@ -641,7 +623,7 @@ qx.Class.define("myapp.Application",
         alert("Login failure for " + usernameIn);
     },
 
-    logout() 
+    logout()
     {
       this.eventSource.close();
       this.eventSource = null;
@@ -651,6 +633,37 @@ qx.Class.define("myapp.Application",
       this.loginButton.setLabel("Login");
       setBGColor(this.loginButton, "#ffcccc");
       this.openLoginDialog();
+    },
+
+    setupSSE()
+    {
+      const that = this;
+      if (this.eventSource) this.eventSource.close();
+      this.eventSource = new EventSource(urlPrefix + 'events/' + planet);
+      this.eventSource.onmessage = function(event)
+      {
+        log("SSE received!!!!");
+        log(event.data);
+        const obj = JSON.parse(event.data);
+        if (app.isCurrentSol()) // ignore new messages if we aren't looking at the current Sol
+          if (obj.type === "IM")
+          {
+            obj.xmitTime = new Date(obj.xmitTime); // ALWAYS have to fix the date.  ALWAYS
+            app.chatUI.addIM(obj);
+            app.chatUI.ims.push(obj);
+          }
+          else if (obj.type === "Report")
+          {
+            obj.xmitTime = new Date(obj.xmitTime); // ALWAYS have to fix the date.  ALWAYS
+            app.getReportUIbyName(obj.name).update(obj);
+          }
+      };
+      this.eventSource.onerror = function(e)
+      {
+        log("SSE connection lost, reconnecting in 5s...");
+        that.eventSource.close();
+        setTimeout(() => { if (that.isLoggedIn) that.setupSSE(); }, 5000);
+      };
     },
 
     //--------------------------------------------------------------------------------------------
@@ -808,14 +821,14 @@ qx.Class.define("myapp.ChatUI",
       }
     },
 
-    doMessage(that) 
+    async doMessage(that)
     {
       let message = that.chatInput.getValue();
       if (message === null) return;
       message = message.trim();
-      
+
       log("doing message: " + message);
-      if (!message) 
+      if (!message)
       {
         alert("Please enter a message.");
         return;
@@ -824,11 +837,17 @@ qx.Class.define("myapp.ChatUI",
       that.chatInput.setValue("");
       let formattedMessage = that.parseMessage(message);
       const im = newIM(formattedMessage);
-      
+
       log(im);
       //that.addIM(im);    // don't need to add locally as we'll add it on the SSE
       that.ims.push(im);   // add IM to local model
-      app.sendIM(im); // send IM to server
+      const result = await app.sendIM(im);
+      if (!result)
+      {
+        that.ims.pop(); // remove from local model since server didn't receive it
+        that.chatInput.setValue(message); // restore message so user can retry
+        alert("Message failed to send. Please try again.");
+      }
     },
 
     doMessages(that)

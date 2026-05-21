@@ -68,7 +68,7 @@ Each Sol (mission day) has a set of daily reports and optionally one or more spe
 - Planet-appropriate coloring is applied to the top panel after login (reddish for Mars, bluish for Earth).
 - A planet icon (Earth or Mars image) is shown in the top bar.
 - The query parameter `?user=<name>` can be used for auto-login during development.
-- Server-Sent Events (SSE) are established per-planet after login to receive real-time push updates.
+- Server-Sent Events (SSE) are established per-planet after login to receive real-time push updates. If the SSE connection drops, the client automatically reconnects after 5 seconds (as long as the user is still logged in).
 
 ### 6. Real-Time Updates (SSE)
 
