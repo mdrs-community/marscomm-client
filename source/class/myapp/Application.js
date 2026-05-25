@@ -12,6 +12,9 @@ let username = null;
 let planet = null;
 let app = null;
 let theme = 0; // 0=dark, 1=light
+let allUsers = [];
+let allGroups = [];
+let distributionCooldown = 2;
 const darkColor = '#222222';
 const lightColor = '#eeeeee';
 function themeBgColor()       { return theme ? lightColor : darkColor; }
@@ -207,6 +210,10 @@ qx.Class.define("myapp.Application",
       refDate = new Date(await this.recvRefDate());
       this.refDate = refDate;
       log("commsDelay=" + commsDelay + ", refDate=" + this.refDate);
+      const usersData = await this.recvUsers();
+      allUsers = usersData.users || [];
+      allGroups = usersData.groups || [];
+      distributionCooldown = (await this.recvDistributionCooldown()).distributionCooldown || 2;
 
       // Create the main layout
       let doc = this.getRoot();
@@ -265,15 +272,97 @@ qx.Class.define("myapp.Application",
       rightPanel.setDecorator("main");
       middleContainer.add(rightPanel);
 
+      makeLabel(rightPanel, "Reports", themeBlueText(), 18);
       let reportNames = await this.recvReports();
-      let reportUIs = [];      
+      let reportUIs = [];
       log(reportNames);
-      reportNames.forEach((name, index) => 
+      reportNames.forEach((name, index) =>
       {
         let reportUI = new myapp.ReportUI(name, rightPanel, this);
         reportUIs.push(reportUI);
       });
       this.reportUIs = reportUIs;
+
+      // --- Distribution panel ---
+      makeLabel(rightPanel, "Distribution", themeBlueText(), 18);
+
+      const groupRow = new qx.ui.container.Composite(new qx.ui.layout.HBox(5));
+      groupRow.setAlignY("middle");
+      makeLabel(groupRow, "Group:", themeStdText(), 14);
+      const groupSelect = new qx.ui.form.SelectBox();
+      groupSelect.setWidth(140);
+      groupRow.add(groupSelect);
+      rightPanel.add(groupRow);
+
+      const colBox  = new qx.ui.container.Composite(new qx.ui.layout.HBox(10));
+      const mcCol   = new qx.ui.container.Composite(new qx.ui.layout.VBox(2));
+      const crewCol = new qx.ui.container.Composite(new qx.ui.layout.VBox(2));
+      makeLabel(mcCol,   "Mission Control", themeBlueText(), 11);
+      makeLabel(crewCol, "Crew",            themeBlueText(), 11);
+      colBox.add(mcCol);
+      colBox.add(crewCol);
+      rightPanel.add(colBox);
+
+      const earthUsers = allUsers.filter(u => u.planet === "Earth");
+      const marsUsers  = allUsers.filter(u => u.planet === "Mars");
+      const checkboxes = {}; // username -> CheckBox
+      let updatingCheckboxes = false;
+      let distTimer = null;
+
+      function getSelectedUsernames() {
+        return allUsers.filter(u => checkboxes[u.name] && checkboxes[u.name].getValue()).map(u => u.name);
+      }
+      function scheduleDistUpdate() {
+        if (distTimer) clearTimeout(distTimer);
+        distTimer = setTimeout(function() { that.chatUI.setDistribution(getSelectedUsernames()); }, distributionCooldown * 1000);
+      }
+      function setCheckboxes(names) {
+        updatingCheckboxes = true;
+        allUsers.forEach(u => { if (checkboxes[u.name]) checkboxes[u.name].setValue(names.includes(u.name)); });
+        updatingCheckboxes = false;
+      }
+      function addUserCheckbox(col, u) {
+        const cb = new qx.ui.form.CheckBox(u.role + " (" + u.name + ")");
+        cb.setValue(true);
+        cb.setTextColor(themeStdText());
+        cb.addListener("changeValue", function() {
+          if (!updatingCheckboxes) { groupSelect.setSelection([customItem]); scheduleDistUpdate(); }
+        });
+        checkboxes[u.name] = cb;
+        col.add(cb);
+      }
+      earthUsers.forEach(u => addUserCheckbox(mcCol,   u));
+      marsUsers.forEach( u => addUserCheckbox(crewCol, u));
+
+      const allItem    = new qx.ui.form.ListItem("All");
+      const mcItem     = new qx.ui.form.ListItem("Mission Control");
+      const crewItem   = new qx.ui.form.ListItem("Crew");
+      const customItem = new qx.ui.form.ListItem("Custom");
+      groupSelect.add(allItem);
+      groupSelect.add(mcItem);
+      groupSelect.add(crewItem);
+      allGroups.forEach(g => {
+        const item = new qx.ui.form.ListItem(g.name);
+        item.setUserData("groupDef", g);
+        groupSelect.add(item);
+      });
+      groupSelect.add(customItem);
+
+      groupSelect.addListener("changeSelection", function(e) {
+        const item = e.getData()[0];
+        if (!item || item === customItem) return;
+        const label = item.getLabel();
+        let names;
+        if      (label === "All")             names = allUsers.map(u => u.name);
+        else if (label === "Mission Control") names = earthUsers.map(u => u.name);
+        else if (label === "Crew")            names = marsUsers.map(u => u.name);
+        else { const g = item.getUserData("groupDef"); names = g ? allUsers.filter(u => g.roles.includes(u.role)).map(u => u.name) : []; }
+        setCheckboxes(names);
+        scheduleDistUpdate();
+      });
+
+      // Initialize distribution to "All"
+      that.chatUI.distribution = allUsers.map(u => u.name).sort();
 
       this.templates = await this.recvReportTemplates();
 
@@ -313,7 +402,7 @@ qx.Class.define("myapp.Application",
       const sol = this.sol;
       
       log("this display styncs");
-      this.chatUI.changeSol(sol.ims);
+      this.chatUI.changeSol(sol.chats || []);
 
       const reportUIs = this.reportUIs;
       for (let i = 0; i < reportUIs.length; i++)
@@ -455,9 +544,9 @@ qx.Class.define("myapp.Application",
       return null;
     },
 
-    async sendIM(im)
+    async sendIM(im, users)
     {
-      const body = { message: im.content };
+      const body = { message: im.content, users: users || [] };
       return await this.doPOST('ims', body);
     },
 
@@ -519,15 +608,16 @@ qx.Class.define("myapp.Application",
       this.doPOST('reports/transmit/' + report.name, body);
     },
 
-    async recvSol(solNum) 
-    { 
+    async recvSol(solNum)
+    {
       const sol = await this.doGET('sols/' + solNum);
       sol.reports = (planet === "Earth") ? sol.reportsEarth : sol.reportsMars;
-      for (let i = 0; i < sol.ims.length; i++)
-        sol.ims[i].xmitTime = new Date(sol.ims[i].xmitTime);
+      for (let i = 0; i < (sol.chats || []).length; i++)
+        for (let j = 0; j < sol.chats[i].ims.length; j++)
+          sol.chats[i].ims[j].xmitTime = new Date(sol.chats[i].ims[j].xmitTime);
       for (let i = 0; i < sol.reports.length; i++)
         sol.reports[i].xmitTime = new Date(sol.reports[i].xmitTime);
-      return sol; 
+      return sol;
     },
 
     async recvReports()         { return  await this.doGET('reports'); },
@@ -538,7 +628,9 @@ qx.Class.define("myapp.Application",
     async recvVersion()         { return  await this.doGET('version'); },
     async recvRefDate()         { return (await this.doGET('ref-date')).refDate; },
     async recvReportTemplates() { return  await this.doGET('reports/templates'); },
-    async recvAttachments()     { return  await this.doGET('attachments/' + planet + '/' + getSolNum()); },
+    async recvAttachments()          { return  await this.doGET('attachments/' + planet + '/' + getSolNum()); },
+    async recvUsers()                { return  await this.doGET('users'); },
+    async recvDistributionCooldown() { return  await this.doGET('distribution-cooldown'); },
     
 
     //--------------------------------------------------------------------------------------------
@@ -652,8 +744,7 @@ qx.Class.define("myapp.Application",
           if (obj.type === "IM")
           {
             obj.xmitTime = new Date(obj.xmitTime); // ALWAYS have to fix the date.  ALWAYS
-            app.chatUI.addIM(obj);
-            app.chatUI.ims.push(obj);
+            app.chatUI.addIMFromSSE(obj);
           }
           else if (obj.type === "Report")
           {
@@ -774,22 +865,67 @@ qx.Class.define("myapp.ChatUI",
   **   put IM in window, statting animation
   **   push IM to server
   */
-  members: 
+  members:
   {
     chatPanel: null,
+    chats: null,
+    distribution: null,
 
-    reset() { try { this.chatPanel.removeAll(); } catch (e) { log("clean et up"); } this.ims = null; },
+    reset() { try { this.chatPanel.removeAll(); } catch (e) { log("clean et up"); } this.ims = []; },
 
-    changeSol(ims)
-    { 
-      log("changing Sol to " + app.getUiSolNum() + "; update chat with " + ims.length + " ims");
+    findChat(users)
+    {
+      if (!users || !this.chats) return null;
+      const key = users.slice().sort().join('\t');
+      for (let i = 0; i < this.chats.length; i++)
+        if (this.chats[i].users.slice().sort().join('\t') === key) return this.chats[i];
+      return null;
+    },
+
+    changeSol(chats)
+    {
+      log("changing Sol to " + app.getUiSolNum() + "; " + chats.length + " chats");
       log("currentSolNum is " + getSolNum());
+      this.chats = chats;
       this.reset();
-      this.ims = ims;
       const isCurrentSol = getSolNum() === app.getUiSolNum();
       this.chatInput.setEnabled(isCurrentSol);
-      for (let i = 0; i < ims.length; i++)
-        this.addIM(ims[i]);
+      const chat = this.findChat(this.distribution);
+      this.ims = chat ? chat.ims : [];
+      for (let i = 0; i < this.ims.length; i++)
+        this.addIM(this.ims[i]);
+    },
+
+    setDistribution(users)
+    {
+      this.distribution = users.slice().sort();
+      this.reset();
+      const isCurrentSol = getSolNum() === app.getUiSolNum();
+      this.chatInput.setEnabled(isCurrentSol);
+      const chat = this.findChat(this.distribution);
+      this.ims = chat ? chat.ims : [];
+      for (let i = 0; i < this.ims.length; i++)
+        this.addIM(this.ims[i]);
+    },
+
+    addIMFromSSE(obj)
+    {
+      // find or create the chat in the local model
+      let chat = this.findChat(obj.chatUsers);
+      if (!chat)
+      {
+        chat = { users: obj.chatUsers.slice().sort(), ims: [] };
+        if (this.chats) this.chats.push(chat);
+      }
+      chat.ims.push(obj);
+      // display only if it matches the current distribution
+      const distKey = this.distribution ? this.distribution.slice().sort().join('\t') : '';
+      const chatKey = obj.chatUsers.slice().sort().join('\t');
+      if (distKey === chatKey)
+      {
+        this.ims = chat.ims;
+        this.addIM(obj);
+      }
     },
 
     addIM(im)
@@ -844,7 +980,7 @@ qx.Class.define("myapp.ChatUI",
       log(im);
       //that.addIM(im);    // don't need to add locally as we'll add it on the SSE
       that.ims.push(im);   // add IM to local model
-      const result = await app.sendIM(im);
+      const result = await app.sendIM(im, that.distribution);
       if (!result)
       {
         that.ims.pop(); // remove from local model since server didn't receive it
