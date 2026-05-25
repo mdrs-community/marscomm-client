@@ -25,6 +25,27 @@ The application consists of two repos:
 - When the user is viewing a past Sol (not the current one), the chat input is disabled.
 - Basic text formatting is supported: `**bold**`, `__italic__`, backtick code, and emoticons `:)` / `:(`.
 
+**Distribution (targeted messaging):**
+
+Each message is addressed to a specific set of users — its *distribution*. Messages with the same distribution belong to the same *Chat*. The chat panel shows only the messages in the Chat matching the currently-selected distribution.
+
+The **Distribution panel** occupies the lower portion of the right-hand panel (below the Reports panel). It contains:
+- A **"Group"** dropdown with entries: `All`, `Mission Control`, `Crew`, `Custom`, plus any custom groups defined in `config.json` that include the current user.
+- Two columns of checkboxes: **Mission Control** (one per Earth user: `"<role> (<name>)"`) and **Crew** (one per Mars user).
+- Only groups that include the current user are shown in the dropdown.
+
+Selecting a Group from the dropdown is UI sugar that checks/unchecks the corresponding boxes:
+- **All** — checks all boxes
+- **Mission Control** — checks Earth users, unchecks Mars users
+- **Crew** — checks Mars users, unchecks Earth users
+- **Custom groups** — checks exactly the users listed in the group's `roles` array, unchecks the rest
+
+Clicking any checkbox directly (to select or deselect) sets the Group dropdown to **"Custom"**.
+
+After any change to the distribution, a **2-second cooldown** starts. When it expires, the chat panel is refreshed to show the Chat (if any) for the selected user set. If no such Chat exists yet, the panel is empty. The cooldown duration is configurable in `config.json` as `distributionCooldown` (seconds).
+
+When sending a message, the target Chat is determined by the currently checked users plus the sender (who is always implicitly included). If a Chat with exactly that user set already exists for the current Sol, the message is added to it; otherwise a new Chat is created.
+
 ### 2. Mission Reports
 
 Each Sol (mission day) has a set of daily reports and optionally one or more special reports due on specific Sols. Report types are configured server-side in `config.json`.
@@ -74,7 +95,7 @@ Each Sol (mission day) has a set of daily reports and optionally one or more spe
 ### 6. Real-Time Updates (SSE)
 
 After login, the client subscribes to `GET /events/:planet`. The server pushes two event types:
-- **IM**: A new instant message — displayed immediately if from the same planet, or after delay if from the other planet.
+- **IM**: A new instant message. The pushed object includes the Chat's `users[]` array. The client displays the IM only if the Chat's user set matches the currently-selected distribution; otherwise it is silently ignored (the IM will appear when the user selects that distribution later). Comms-delay logic applies as normal.
 - **Report**: A report update — the matching ReportUI is refreshed.
 
 ### 7. Branding / Multi-Organization Support
@@ -154,7 +175,8 @@ All server calls go to `urlPrefix`, which defaults to `http://localhost:8081/` b
 | `GET /rotation-length` | Number of Sols in rotation |
 | `GET /organization` | Organization name (`MDRS` or `LunAres`) |
 | `GET /ref-date` | Reference date (Sol 0 start date) |
-| `GET /sols/:solNum` | Sol data (IMs + reports for both planets) |
+| `GET /users` | List of all users `[{role, name, planet}]` (no passwords) |
+| `GET /sols/:solNum` | Sol data (chats + reports for both planets) |
 | `GET /reports` | List of report names |
 | `GET /reports/templates` | Map of report name -> template HTML |
 | `GET /attachments/:planet/:solNum` | All attachments for a Sol/planet (base64 content) |
@@ -166,7 +188,7 @@ All server calls go to `urlPrefix`, which defaults to `http://localhost:8081/` b
 | Endpoint | Purpose |
 |---|---|
 | `POST /login` | Login with username/password |
-| `POST /ims` | Send an instant message |
+| `POST /ims` | Send an instant message to a targeted distribution |
 | `POST /reports/update` | Update report content/approval |
 | `POST /reports/transmit/:name` | Transmit report to other planet |
 | `POST /attachments` | Upload attachment files (multipart) |
@@ -174,9 +196,17 @@ All server calls go to `urlPrefix`, which defaults to `http://localhost:8081/` b
 ### Sol Data Model (client-side)
 
 Each Sol object (received from server) contains:
-- `ims[]`: array of IM objects `{ type, content, user, planet, xmitTime, transmitted }`
+- `chats[]`: array of Chat objects (see below)
 - `reportsEarth[]` / `reportsMars[]`: arrays of Report objects
 - Client selects `sol.reportsEarth` or `sol.reportsMars` based on `planet` after login.
+
+### Chat and IM Data Model (client-side)
+
+Each **Chat** object:
+- `users[]`: sorted array of usernames who are members of this chat (includes sender)
+- `ims[]`: array of IM objects `{ type, content, user, planet, xmitTime, transmitted }`
+
+The client finds the Chat to display by comparing `chat.users` (sorted) against the currently-selected distribution (sorted, with current user always included).
 
 ### IM Transit Logic
 
