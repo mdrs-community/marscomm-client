@@ -248,6 +248,9 @@ qx.Class.define("myapp.Application",
       topPanel.add(numberInput);
       numberInput.setBackgroundColor(themeBgColor()); // TODO: find different way since this somehow doesn't seem to work :(
       this.numberInput = numberInput;
+      let todayButton = new qx.ui.form.Button("Today");
+      todayButton.addListener("execute", function() { numberInput.setValue(getSolNum()); });
+      topPanel.add(todayButton);
 
       topPanel.add(new qx.ui.core.Spacer(), { flex: 1 });
          
