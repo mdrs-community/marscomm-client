@@ -58,6 +58,7 @@ Each Sol (mission day) has a set of daily reports and optionally one or more spe
 ### 4. Sol Navigation
 
 - A spinner in the top bar allows the user to navigate to any Sol in the rotation (0 to rotationLength-1).
+- A "Today" button next to the spinner sets the spinner to the Sol number corresponding to today's date.
 - The current Sol is computed from the server-provided reference date.
 - When the Sol changes, the chat and report panels are refreshed with data for that Sol.
 
