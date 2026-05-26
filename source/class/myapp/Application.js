@@ -320,6 +320,7 @@ qx.Class.define("myapp.Application",
       let selectingFromChat = false;
       let distTimer = null;
       let chatItemsByKey = {}; // chatKey -> { label, unread }
+      let selectedChatKey = null;
 
       function distChatKey(users) { return users.slice().sort().join('\t'); }
 
@@ -362,8 +363,9 @@ qx.Class.define("myapp.Application",
         if (distTimer) clearTimeout(distTimer);
         distTimer = setTimeout(function() { that.chatUI.setDistribution(getSelectedUsernames()); }, distributionCooldown * 1000);
       }
-      app.getCheckboxSelection = function() { return getSelectedUsernames(); };
-      app.cancelDistCooldown   = function() { if (distTimer) { clearTimeout(distTimer); distTimer = null; } };
+      app.getCheckboxSelection  = function() { return getSelectedUsernames(); };
+      app.cancelDistCooldown    = function() { if (distTimer) { clearTimeout(distTimer); distTimer = null; } };
+      app.getChatDisplayName    = function(users) { return getChatName({ users: users }); };
       function setCheckboxes(names) {
         updatingCheckboxes = true;
         allUsers.forEach(u => { if (checkboxes[u.name]) checkboxes[u.name].setValue(names.includes(u.name)); });
@@ -405,11 +407,20 @@ qx.Class.define("myapp.Application",
         groupSelect.setSelection([item || customItem]);
       }
 
-      function onChatClick(chat, label) {
+      function chatSelectColor() { return theme ? "#b0d0f8" : "#1e3a60"; }
+
+      function onChatClick(chat, lbl) {
         selectingFromChat = true;
         const key = distChatKey(chat.users);
+        // Clear previous selection highlight
+        if (selectedChatKey && chatItemsByKey[selectedChatKey])
+          chatItemsByKey[selectedChatKey].label.setBackgroundColor(null);
+        // Set new selection highlight
+        lbl.setBackgroundColor(chatSelectColor());
+        selectedChatKey = key;
+        // Clear unread state
         const entry = chatItemsByKey[key];
-        if (entry) { entry.unread = false; label.setTextColor(themeStdText()); label.setFont(null); }
+        if (entry) { entry.unread = false; lbl.setTextColor(themeStdText()); lbl.setFont(null); }
         setCheckboxes(chat.users);
         setGroupDropdown(chat.users);
         that.chatUI.setDistribution(chat.users);
@@ -434,7 +445,9 @@ qx.Class.define("myapp.Application",
         const children = chatsCol.getChildren();
         for (let i = children.length - 1; i >= 1; i--) chatsCol.remove(children[i]);
         chatItemsByKey = {};
+        selectedChatKey = null;
         if (!username) return;
+        const currentDistKey = that.chatUI.distribution ? distChatKey(that.chatUI.distribution) : null;
         chats.filter(c => c.users.includes(username)).forEach(function(chat) {
           const key = distChatKey(chat.users);
           const name = getChatName(chat);
@@ -444,6 +457,7 @@ qx.Class.define("myapp.Application",
           const tip = getChatTooltip(chat);
           if (tip) lbl.setToolTipText(tip);
           lbl.addListener("tap", function() { onChatClick(chat, lbl); });
+          if (key === currentDistKey) { lbl.setBackgroundColor(chatSelectColor()); selectedChatKey = key; }
           chatsCol.add(lbl);
           chatItemsByKey[key] = { label: lbl, unread: false };
         });
@@ -927,6 +941,13 @@ qx.Class.define("myapp.ChatUI",
     chatContainer.setWidth(400);
     parentContainer.add(chatContainer, { flex: 3 });
 
+    let chatTitle = new qx.ui.basic.Label("");
+    chatTitle.setFont(new qx.bom.Font(18, ["Arial"]));
+    chatTitle.setTextColor(themeBlueText());
+    chatTitle.setPaddingLeft(5);
+    this.chatTitle = chatTitle;
+    chatContainer.add(chatTitle);
+
     let chatPanel = new qx.ui.container.Composite(new qx.ui.layout.VBox());
     chatPanel.setPadding(10);
     this.chatPanel = chatPanel;
@@ -935,7 +956,6 @@ qx.Class.define("myapp.ChatUI",
     // Set background image based on organization via CSS pseudo-element (see index.html)
     chatPanel.getContentElement().addClass(organization === "LunAres" ? "bg-lunares" : "bg-mdrs");
 
-    chatContainer.add(chatPanel, { flex: 2 });
     let chatScroll = new qx.ui.container.Scroll();
     chatScroll.add(chatPanel);
     chatContainer.add(chatScroll, { flex: 1 });
@@ -968,10 +988,18 @@ qx.Class.define("myapp.ChatUI",
   members:
   {
     chatPanel: null,
+    chatTitle: null,
     chats: null,
     distribution: null,
 
     reset() { try { this.chatPanel.removeAll(); } catch (e) { log("clean et up"); } this.ims = []; },
+
+    updateChatTitle()
+    {
+      if (!this.chatTitle) return;
+      const name = (app.getChatDisplayName && this.distribution) ? app.getChatDisplayName(this.distribution) : "";
+      this.chatTitle.setValue(name || "");
+    },
 
     findChat(users)
     {
@@ -994,6 +1022,7 @@ qx.Class.define("myapp.ChatUI",
       this.ims = chat ? chat.ims : [];
       for (let i = 0; i < this.ims.length; i++)
         this.addIM(this.ims[i]);
+      this.updateChatTitle();
     },
 
     setDistribution(users)
@@ -1006,6 +1035,7 @@ qx.Class.define("myapp.ChatUI",
       this.ims = chat ? chat.ims : [];
       for (let i = 0; i < this.ims.length; i++)
         this.addIM(this.ims[i]);
+      this.updateChatTitle();
     },
 
     addIMFromSSE(obj)
