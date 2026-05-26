@@ -473,6 +473,17 @@ qx.Class.define("myapp.Application",
         }
       };
 
+      app.syncChatSelection = function() {
+        const currentKey = that.chatUI.distribution ? distChatKey(that.chatUI.distribution) : null;
+        if (selectedChatKey && chatItemsByKey[selectedChatKey])
+          chatItemsByKey[selectedChatKey].label.setBackgroundColor(null);
+        selectedChatKey = null;
+        if (currentKey && chatItemsByKey[currentKey]) {
+          chatItemsByKey[currentKey].label.setBackgroundColor(chatSelectColor());
+          selectedChatKey = currentKey;
+        }
+      };
+
       // Initialize distribution to "All"
       that.chatUI.distribution = allUsers.map(u => u.name).sort();
 
@@ -1119,6 +1130,7 @@ qx.Class.define("myapp.ChatUI",
       if (!targetUsers.includes(username)) targetUsers = targetUsers.concat([username]);
       if (app.cancelDistCooldown) app.cancelDistCooldown();
       that.setDistribution(targetUsers);
+      if (app.syncChatSelection) app.syncChatSelection();
 
       that.chatInput.setValue("");
       let formattedMessage = that.parseMessage(message);
