@@ -284,6 +284,11 @@ qx.Class.define("myapp.Application",
       this.reportUIs = reportUIs;
 
       // --- Distribution panel ---
+      const sep = new qx.ui.core.Widget();
+      sep.setHeight(1);
+      sep.setBackgroundColor(themeInactiveColor());
+      rightPanel.add(sep);
+
       makeLabel(rightPanel, "Distribution", themeBlueText(), 18);
 
       const groupRow = new qx.ui.container.Composite(new qx.ui.layout.HBox(5));
@@ -294,20 +299,61 @@ qx.Class.define("myapp.Application",
       groupRow.add(groupSelect);
       rightPanel.add(groupRow);
 
-      const colBox  = new qx.ui.container.Composite(new qx.ui.layout.HBox(10));
-      const mcCol   = new qx.ui.container.Composite(new qx.ui.layout.VBox(2));
-      const crewCol = new qx.ui.container.Composite(new qx.ui.layout.VBox(2));
-      makeLabel(mcCol,   "Mission Control", themeBlueText(), 11);
-      makeLabel(crewCol, "Crew",            themeBlueText(), 11);
+      const distScroll = new qx.ui.container.Scroll();
+      const colBox    = new qx.ui.container.Composite(new qx.ui.layout.HBox(12));
+      const chatsCol  = new qx.ui.container.Composite(new qx.ui.layout.VBox(2));
+      const mcCol     = new qx.ui.container.Composite(new qx.ui.layout.VBox(2));
+      const crewCol   = new qx.ui.container.Composite(new qx.ui.layout.VBox(2));
+      makeLabel(chatsCol, "Chats",           themeBlueText(), 13);
+      makeLabel(mcCol,    "Mission Control", themeBlueText(), 13);
+      makeLabel(crewCol,  "Crew",            themeBlueText(), 13);
+      colBox.add(chatsCol);
       colBox.add(mcCol);
       colBox.add(crewCol);
-      rightPanel.add(colBox);
+      distScroll.add(colBox);
+      rightPanel.add(distScroll, { flex: 1 });
 
       const earthUsers = allUsers.filter(u => u.planet === "Earth");
       const marsUsers  = allUsers.filter(u => u.planet === "Mars");
       const checkboxes = {}; // username -> CheckBox
       let updatingCheckboxes = false;
+      let selectingFromChat = false;
       let distTimer = null;
+      let chatItemsByKey = {}; // chatKey -> { label, unread }
+
+      function distChatKey(users) { return users.slice().sort().join('\t'); }
+
+      function findMatchingGroupName(chatUsers) {
+        const others = chatUsers.filter(n => n !== username).sort().join('\t');
+        const allNames   = allUsers.map(u => u.name).filter(n => n !== username).sort().join('\t');
+        const earthNames = earthUsers.map(u => u.name).filter(n => n !== username).sort().join('\t');
+        const marsNames  = marsUsers.map(u => u.name).filter(n => n !== username).sort().join('\t');
+        if (others === allNames)   return "All";
+        if (others === earthNames) return "Mission Control";
+        if (others === marsNames)  return "Crew";
+        for (let i = 0; i < allGroups.length; i++) {
+          const g = allGroups[i];
+          const gNames = allUsers.filter(u => g.roles.includes(u.role)).map(u => u.name).filter(n => n !== username).sort().join('\t');
+          if (others === gNames) return g.name;
+        }
+        return null;
+      }
+
+      function getChatName(chat) {
+        const gname = findMatchingGroupName(chat.users);
+        if (gname) return gname;
+        const others = chat.users.filter(n => n !== username);
+        if (others.length === 1) {
+          const u = allUsers.find(u => u.name === others[0]);
+          return u ? u.role : others[0];
+        }
+        return others.map(n => { const u = allUsers.find(u => u.name === n); return (u && u.abbr) ? u.abbr : n; }).sort().join(',');
+      }
+
+      function getChatTooltip(chat) {
+        const others = chat.users.filter(n => n !== username);
+        return others.map(n => { const u = allUsers.find(u => u.name === n); return u ? u.role : n; }).join(', ');
+      }
 
       function getSelectedUsernames() {
         return allUsers.filter(u => checkboxes[u.name] && checkboxes[u.name].getValue()).map(u => u.name);
@@ -338,6 +384,7 @@ qx.Class.define("myapp.Application",
       const mcItem     = new qx.ui.form.ListItem("Mission Control");
       const crewItem   = new qx.ui.form.ListItem("Crew");
       const customItem = new qx.ui.form.ListItem("Custom");
+      const groupItems = [allItem, mcItem, crewItem];
       groupSelect.add(allItem);
       groupSelect.add(mcItem);
       groupSelect.add(crewItem);
@@ -345,10 +392,30 @@ qx.Class.define("myapp.Application",
         const item = new qx.ui.form.ListItem(g.name);
         item.setUserData("groupDef", g);
         groupSelect.add(item);
+        groupItems.push(item);
       });
       groupSelect.add(customItem);
+      groupItems.push(customItem);
+
+      function setGroupDropdown(users) {
+        const gname = findMatchingGroupName(users);
+        const item = gname ? groupItems.find(i => i.getLabel() === gname) : null;
+        groupSelect.setSelection([item || customItem]);
+      }
+
+      function onChatClick(chat, label) {
+        selectingFromChat = true;
+        const key = distChatKey(chat.users);
+        const entry = chatItemsByKey[key];
+        if (entry) { entry.unread = false; label.setTextColor(themeStdText()); label.setFont(null); }
+        setCheckboxes(chat.users);
+        setGroupDropdown(chat.users);
+        that.chatUI.setDistribution(chat.users);
+        selectingFromChat = false;
+      }
 
       groupSelect.addListener("changeSelection", function(e) {
+        if (selectingFromChat) return;
         const item = e.getData()[0];
         if (!item || item === customItem) return;
         const label = item.getLabel();
@@ -360,6 +427,35 @@ qx.Class.define("myapp.Application",
         setCheckboxes(names);
         scheduleDistUpdate();
       });
+
+      app.rebuildChatList = function(chats) {
+        const children = chatsCol.getChildren();
+        for (let i = children.length - 1; i >= 1; i--) chatsCol.remove(children[i]);
+        chatItemsByKey = {};
+        if (!username) return;
+        chats.filter(c => c.users.includes(username)).forEach(function(chat) {
+          const key = distChatKey(chat.users);
+          const name = getChatName(chat);
+          const lbl = new qx.ui.basic.Label(name);
+          lbl.setTextColor(themeStdText());
+          lbl.setCursor("pointer");
+          const tip = getChatTooltip(chat);
+          if (tip) lbl.setToolTipText(tip);
+          lbl.addListener("tap", function() { onChatClick(chat, lbl); });
+          chatsCol.add(lbl);
+          chatItemsByKey[key] = { label: lbl, unread: false };
+        });
+      };
+
+      app.markChatUnread = function(chatUsers) {
+        const key = distChatKey(chatUsers);
+        const entry = chatItemsByKey[key];
+        if (entry && !entry.unread) {
+          entry.unread = true;
+          entry.label.setTextColor("red");
+          entry.label.setFont(new qx.bom.Font(14, ["Arial"]).set({ bold: true }));
+        }
+      };
 
       // Initialize distribution to "All"
       that.chatUI.distribution = allUsers.map(u => u.name).sort();
@@ -403,6 +499,7 @@ qx.Class.define("myapp.Application",
       
       log("this display styncs");
       this.chatUI.changeSol(sol.chats || []);
+      if (app.rebuildChatList) app.rebuildChatList(sol.chats || []);
 
       const reportUIs = this.reportUIs;
       for (let i = 0; i < reportUIs.length; i++)
@@ -744,7 +841,8 @@ qx.Class.define("myapp.Application",
           if (obj.type === "IM")
           {
             obj.xmitTime = new Date(obj.xmitTime); // ALWAYS have to fix the date.  ALWAYS
-            app.chatUI.addIMFromSSE(obj);
+            if (obj.chatUsers && obj.chatUsers.includes(username))
+              app.chatUI.addIMFromSSE(obj);
           }
           else if (obj.type === "Report")
           {
@@ -912,19 +1010,25 @@ qx.Class.define("myapp.ChatUI",
     {
       // find or create the chat in the local model
       let chat = this.findChat(obj.chatUsers);
+      const isNewChat = !chat;
       if (!chat)
       {
         chat = { users: obj.chatUsers.slice().sort(), ims: [] };
         if (this.chats) this.chats.push(chat);
       }
       chat.ims.push(obj);
-      // display only if it matches the current distribution
+      // display or mark unread based on whether this matches current distribution
       const distKey = this.distribution ? this.distribution.slice().sort().join('\t') : '';
       const chatKey = obj.chatUsers.slice().sort().join('\t');
       if (distKey === chatKey)
       {
         this.ims = chat.ims;
         this.addIM(obj);
+      }
+      else
+      {
+        if (isNewChat && app.rebuildChatList) app.rebuildChatList(this.chats);
+        else if (app.markChatUnread) app.markChatUnread(obj.chatUsers);
       }
     },
 
