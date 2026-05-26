@@ -1029,8 +1029,13 @@ qx.Class.define("myapp.ChatUI",
       }
       else
       {
-        if (isNewChat && app.rebuildChatList) app.rebuildChatList(this.chats);
-        else if (app.markChatUnread) app.markChatUnread(obj.chatUsers);
+        const doUnread = () => {
+          if (isNewChat && app.rebuildChatList) app.rebuildChatList(this.chats);
+          if (app.markChatUnread) app.markChatUnread(obj.chatUsers);
+        };
+        const timeRemaining = commsDelay - timeInTransit(obj);
+        if (inTransit(obj)) setTimeout(doUnread, timeRemaining * 1000);
+        else doUnread();
       }
     },
 
