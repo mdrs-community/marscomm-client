@@ -362,6 +362,8 @@ qx.Class.define("myapp.Application",
         if (distTimer) clearTimeout(distTimer);
         distTimer = setTimeout(function() { that.chatUI.setDistribution(getSelectedUsernames()); }, distributionCooldown * 1000);
       }
+      app.getCheckboxSelection = function() { return getSelectedUsernames(); };
+      app.cancelDistCooldown   = function() { if (distTimer) { clearTimeout(distTimer); distTimer = null; } };
       function setCheckboxes(names) {
         updatingCheckboxes = true;
         allUsers.forEach(u => { if (checkboxes[u.name]) checkboxes[u.name].setValue(names.includes(u.name)); });
@@ -1077,6 +1079,12 @@ qx.Class.define("myapp.ChatUI",
         return;
       }
 
+      // Use the current checkbox state as the target distribution; cancel any pending cooldown
+      let targetUsers = app.getCheckboxSelection ? app.getCheckboxSelection() : that.distribution;
+      if (!targetUsers.includes(username)) targetUsers = targetUsers.concat([username]);
+      if (app.cancelDistCooldown) app.cancelDistCooldown();
+      that.setDistribution(targetUsers);
+
       that.chatInput.setValue("");
       let formattedMessage = that.parseMessage(message);
       const im = newIM(formattedMessage);
@@ -1084,7 +1092,7 @@ qx.Class.define("myapp.ChatUI",
       log(im);
       //that.addIM(im);    // don't need to add locally as we'll add it on the SSE
       that.ims.push(im);   // add IM to local model
-      const result = await app.sendIM(im, that.distribution);
+      const result = await app.sendIM(im, targetUsers);
       if (!result)
       {
         that.ims.pop(); // remove from local model since server didn't receive it
