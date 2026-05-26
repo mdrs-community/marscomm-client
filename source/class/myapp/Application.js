@@ -830,7 +830,8 @@ qx.Class.define("myapp.Application",
         await this.changeSol(this, getSolNum());
         this.numberInput.setValue(getSolNum());
 
-        setBGColor(this.loginButton, themeButtonColor());
+        const btnColor = planet === "Mars" ? (theme ? "#ffaaaa" : "#dd9999") : (theme ? "#aaaaff" : "#9999dd");
+        setBGColor(this.loginButton, btnColor);
 
         // set up server-sent events
         // eventSource is tied to login because the planet can change
