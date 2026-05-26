@@ -27,22 +27,41 @@ The application consists of two repos:
 
 **Distribution (targeted messaging):**
 
-Each message is addressed to a specific set of users — its *distribution*. Messages with the same distribution belong to the same *Chat*. The chat panel shows only the messages in the Chat matching the currently-selected distribution.
+Each message is addressed to a specific set of users — its *distribution*. Messages with the same distribution belong to the same *Chat*. The Distribution panel lets the user choose a distribution and see existing Chats they are part of.
 
-The **Distribution panel** occupies the lower portion of the right-hand panel (below the Reports panel). It contains:
-- A **"Group"** dropdown with entries: `All`, `Mission Control`, `Crew`, `Custom`, plus any custom groups defined in `config.json` that include the current user.
-- Two columns of checkboxes: **Mission Control** (one per Earth user: `"<role> (<name>)"`) and **Crew** (one per Mars user).
-- Only groups that include the current user are shown in the dropdown.
+The **Distribution panel** occupies the lower portion of the right-hand panel (below a horizontal separator). It is wrapped in a scroll container and has three columns side by side:
+
+**Column 1 — Chat list:**
+- Lists all Chats for the current Sol in which the current user is a member.
+- Items are singly selectable; no item is selected by default.
+- When a new IM arrives via SSE for a Chat that is not currently selected, that Chat's list item is shown in **bold red** (unread indicator). The indicator is cleared when the item is clicked.
+- Unread state is session-only and applies only to the current Sol (SSE only delivers messages for the current Sol).
+- When a Chat item is clicked, its messages are displayed immediately in the chat panel, and the Group dropdown and checkboxes are updated to reflect the Chat's user set (no cooldown).
+
+**Chat naming** (all logic is client-side, relative to the current user):
+1. If `Set(chat.users) \ {currentUser}` equals `Set(group_users) \ {currentUser}` for a built-in group (All / Mission Control / Crew) or a config-defined custom group, the Chat is named after that group.
+2. If the Chat has exactly one other user, the Chat is named that user's role.
+3. Otherwise, the Chat is named by a comma-separated list of abbreviated roles for all users except the current user, e.g. `"C,EO,MCM"`. A tooltip on the item shows the full unabbreviated role list. Abbreviations are defined by the optional `"abbr"` field on each user entry in `config.json`.
+
+Because naming is client-side and relative to the current user, each user sees at most one Chat per group name — no duplicates can arise from a single user's perspective.
+
+**Column 2 — Mission Control checkboxes:**
+- One checkbox per Earth user, labelled `"<role> (<name>)"`.
+
+**Column 3 — Crew checkboxes:**
+- One checkbox per Mars user, labelled `"<role> (<name>)"`.
+
+A **"Group"** dropdown above the columns contains: `All`, `Mission Control`, `Crew`, plus any custom groups defined in `config.json`, plus `Custom`.
 
 Selecting a Group from the dropdown is UI sugar that checks/unchecks the corresponding boxes:
 - **All** — checks all boxes
 - **Mission Control** — checks Earth users, unchecks Mars users
 - **Crew** — checks Mars users, unchecks Earth users
-- **Custom groups** — checks exactly the users listed in the group's `roles` array, unchecks the rest
+- **Custom groups** — checks exactly the users whose role is listed in the group's `roles` array, unchecks the rest
 
-Clicking any checkbox directly (to select or deselect) sets the Group dropdown to **"Custom"**.
+Clicking any checkbox directly sets the Group dropdown to **"Custom"**.
 
-After any change to the distribution, a **2-second cooldown** starts. When it expires, the chat panel is refreshed to show the Chat (if any) for the selected user set. If no such Chat exists yet, the panel is empty. The cooldown duration is configurable in `config.json` as `distributionCooldown` (seconds).
+After any checkbox/group change made via the dropdown or checkboxes (not via a Chat list click), a **2-second cooldown** starts. When it expires, the chat panel is refreshed to show the Chat (if any) for the selected user set. If no such Chat exists yet, the panel is empty. The cooldown duration is configurable in `config.json` as `distributionCooldown` (seconds).
 
 When sending a message, the target Chat is determined by the currently checked users plus the sender (who is always implicitly included). If a Chat with exactly that user set already exists for the current Sol, the message is added to it; otherwise a new Chat is created.
 
@@ -95,7 +114,7 @@ Each Sol (mission day) has a set of daily reports and optionally one or more spe
 ### 6. Real-Time Updates (SSE)
 
 After login, the client subscribes to `GET /events/:planet`. The server pushes two event types:
-- **IM**: A new instant message. The pushed object includes the Chat's `users[]` array. The client displays the IM only if the Chat's user set matches the currently-selected distribution; otherwise it is silently ignored (the IM will appear when the user selects that distribution later). Comms-delay logic applies as normal.
+- **IM**: A new instant message. The pushed object includes the Chat's `users[]` array. If the current user is not in `chatUsers`, the IM is ignored entirely. If the Chat's user set matches the currently-selected distribution, the IM is displayed in the chat panel (comms-delay logic applies). If it matches a different Chat the user is on, that Chat's list item is marked unread (bold red) in the Chat list. Either way the IM is added to the appropriate Chat in the local model.
 - **Report**: A report update — the matching ReportUI is refreshed.
 
 ### 7. Branding / Multi-Organization Support
@@ -175,7 +194,7 @@ All server calls go to `urlPrefix`, which defaults to `http://localhost:8081/` b
 | `GET /rotation-length` | Number of Sols in rotation |
 | `GET /organization` | Organization name (`MDRS` or `LunAres`) |
 | `GET /ref-date` | Reference date (Sol 0 start date) |
-| `GET /users` | List of all users `[{role, name, planet}]` (no passwords) |
+| `GET /users` | List of all users `[{role, name, planet, abbr?}]` (no passwords) |
 | `GET /sols/:solNum` | Sol data (chats + reports for both planets) |
 | `GET /reports` | List of report names |
 | `GET /reports/templates` | Map of report name -> template HTML |
