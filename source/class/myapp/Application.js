@@ -1077,7 +1077,7 @@ qx.Class.define("myapp.ChatUI",
           if (app.markChatUnread) app.markChatUnread(obj.chatUsers);
         };
         const timeRemaining = commsDelay - timeInTransit(obj);
-        if (inTransit(obj)) setTimeout(doUnread, timeRemaining * 1000);
+        if (inTransit(obj) && obj.planet !== planet) setTimeout(doUnread, timeRemaining * 1000);
         else doUnread();
       }
     },
