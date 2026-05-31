@@ -21,7 +21,7 @@ The application consists of two repos:
 - Users on Mars and Earth can send short text messages (IMs).
 - IMs are transmitted automatically when sent (no manual transmit step).
 - An IM sent from one planet is not visible on the other planet until the communications delay has elapsed.
-- While an IM is in transit, a circular progress indicator is shown to the sender.
+- While an IM is in transit to recipients on the other planet, a circular progress indicator is shown to the sender. No progress indicator is shown for IMs sent within a single planet (all recipients on the same planet as the sender).
 - When the user is viewing a past Sol (not the current one), the chat input is disabled.
 - Basic text formatting is supported: `**bold**`, `__italic__`, backtick code, and emoticons `:)` / `:(`.
 

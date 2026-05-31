@@ -1033,7 +1033,7 @@ qx.Class.define("myapp.ChatUI",
       const chat = this.findChat(this.distribution);
       this.ims = chat ? chat.ims : [];
       for (let i = 0; i < this.ims.length; i++)
-        this.addIM(this.ims[i]);
+        this.addIM(this.ims[i], chat ? chat.users : null);
       this.updateChatTitle();
     },
 
@@ -1046,7 +1046,7 @@ qx.Class.define("myapp.ChatUI",
       const chat = this.findChat(this.distribution);
       this.ims = chat ? chat.ims : [];
       for (let i = 0; i < this.ims.length; i++)
-        this.addIM(this.ims[i]);
+        this.addIM(this.ims[i], chat ? chat.users : null);
       this.updateChatTitle();
     },
 
@@ -1067,7 +1067,8 @@ qx.Class.define("myapp.ChatUI",
       if (distKey === chatKey)
       {
         this.ims = chat.ims;
-        this.addIM(obj);
+        this.addIM(obj, obj.chatUsers);
+        if (isNewChat && app.rebuildChatList) app.rebuildChatList(this.chats);
       }
       else
       {
@@ -1081,35 +1082,35 @@ qx.Class.define("myapp.ChatUI",
       }
     },
 
-    addIM(im)
+    addIM(im, chatUsers)
     {
-      
       log("addIM: " + im.content + " from planet " + im.planet + " (we are on " + planet + ")");
       if (!im.content) return;
 
-      
+      // Cross-planet: any recipient is on a different planet than the sender
+      const crossPlanet = !chatUsers || chatUsers.some(n => { const u = allUsers.find(u => u.name === n); return u && u.planet !== im.planet; });
+
       log("  commsDelay=" + commsDelay + ", tit=" + timeInTransit(im));
       const timeRemaining = commsDelay - timeInTransit(im);
       if (im.planet === planet || !inTransit(im))
       {
         let container = new qx.ui.container.Composite(new qx.ui.layout.HBox(10));
-    
+
         const str = '<b>' + im.user + '</b> <font size="-2">' + (new Date()).toString() + ':</font><br>' + im.content + '<br> <br>';
         const label = new qx.ui.basic.Label().set( { value: str, rich: true });
         const color = theme ? ((im.user === username) ? "#0000bb" : "black") : (im.user === username) ? "#9999ff" : "white";
         label.setTextColor(color);
         label.setFont(new qx.bom.Font(16, ["Arial"]));
-        container.add(label);  
-        log("  still in transit!")
+        container.add(label);
         log("time since sent is " + timeSinceSent(im.xmitTime));
-        if (inTransit(im)) 
+        if (inTransit(im) && crossPlanet)
           startXmitProgressDisplay(timeRemaining, container, 55);
         this.chatPanel.add(container);
       }
       else // IM is NOT from this planet and has not yet arrived, so wait for it
-      {        
+      {
         log("scheduling IM arrival in " + timeRemaining);
-        setTimeout(() => this.addIM(im), timeRemaining*1000);
+        setTimeout(() => this.addIM(im, chatUsers), timeRemaining*1000);
       }
     },
 
