@@ -2186,7 +2186,7 @@ function startXmitProgressDisplay(commsDelay, parentContainer, size, onDone, sta
 
   const totalUpdates = 100;
   let progress = startProgress;
-  if (startProgress > 0) circularProgress.setProgress(startProgress); // show correct initial fill
+  if (startProgress > 0) circularProgress.progress = startProgress; // set before appear so draw() uses correct initial fill
   let timer = new qx.event.Timer(Math.round(commsDelay * 1000 / totalUpdates)); // update every 1/100 of the commsDelay
   timer.addListener("interval", function() 
   {
