@@ -25,7 +25,8 @@ const darkColor = '#222222';
 const lightColor = '#eeeeee';
 function themeBgColor()       { return theme ? lightColor : darkColor; }
 function themeButtonColor()   { return theme ? "#ccccff"  : '#9999dd' }
-function themeInactiveColor() { return theme ? "#cccccc"  : '#999999' }
+function themeInactiveColor()        { return theme ? "#cccccc"  : '#999999' }
+function themeDisabledButtonColor() { return theme ? "#aaaaaa"  : '#666666' }
 function themeBlueText()      { return theme ? "blue"     : '#4444ff' }
 function themeStdText()       { return theme ? "black"    : 'white' }
 
@@ -870,6 +871,11 @@ qx.Class.define("myapp.Application",
       this.doPOST('reports/transmit/' + report.name, body);
     },
 
+    resetReport(report)
+    {
+      this.doPOST('reports/reset/' + report.name, {});
+    },
+
     async recvSol(solNum)
     {
       const sol = await this.doGET('sols/' + solNum);
@@ -1275,7 +1281,16 @@ qx.Class.define("myapp.ChatUI",
         chat = { users: obj.chatUsers.slice().sort(), ims: [] };
         if (this.chats) this.chats.push(chat);
       }
-      chat.ims.push(obj);
+      // Avoid model duplication: doMessage() pushes a local placeholder (no id) before the
+      // server echo arrives via SSE. Merge the server fields into that placeholder instead of
+      // pushing a second copy. Match on the first id-less entry from the same user (FIFO).
+      if (obj.id && obj.user === username)
+      {
+        const placeholder = chat.ims.find(m => !m.id && m.user === username);
+        if (placeholder) Object.assign(placeholder, obj);
+        else chat.ims.push(obj);
+      }
+      else chat.ims.push(obj);
       // display or mark unread based on whether this matches current distribution
       const distKey = this.distribution ? this.distribution.slice().sort().join('\t') : '';
       const chatKey = obj.chatUsers.slice().sort().join('\t');
@@ -1302,6 +1317,7 @@ qx.Class.define("myapp.ChatUI",
     {
       log("addIM: " + im.content + " from planet " + im.planet + " (we are on " + planet + ")");
       if (!im.content) return;
+      if (im.id && this.imContainers && this.imContainers[im.id]) return; // already rendered
 
       // Cross-planet: any recipient is on a different planet than the sender
       const crossPlanet = !chatUsers || chatUsers.some(n => { const u = allUsers.find(u => u.name === n); return u && u.planet !== im.planet; });
@@ -1614,6 +1630,8 @@ qx.Class.define("myapp.ReportUI",
     this.approveButton.addListener("execute", () => { this.report.approved = this.approveButton.getValue() ? true : false; this.onChange(); })
     container.add(this.approveButton);
 
+    this.resetButton = makeButton(container, "Reset", () => that.onReset(), themeDisabledButtonColor(), 14, this);
+
     function onXmit()
     { 
       that.report.transmitted = true;
@@ -1639,6 +1657,7 @@ qx.Class.define("myapp.ReportUI",
     amanButton: null,
     editButton: null,
     approveButton: null,
+    resetButton: null,
     txButton:   null,
     label:      null,
     slabel:     null,
@@ -1699,16 +1718,19 @@ qx.Class.define("myapp.ReportUI",
       const viewEnabled = this.state !== "Unused"; // edit button now works in View mode for non-current Sols
       const editEnabled = viewEnabled && isCurrentSol;
       const aprvEnabled = editEnabled && (this.state === "Received" || this.state === "Approved");
-      const editBgColor = editEnabled ? themeButtonColor() : "#cccccc";
+      const editBgColor = editEnabled ? themeButtonColor() : themeDisabledButtonColor();
       const txEnabled = isCurrentSol && editEnabled && this.state !== "Empty";
-      const txBgColor = txEnabled ? themeButtonColor() : "#cccccc";
-      if (this.fsButton)      {      this.fsButton.setEnabled(editEnabled); setBGColor(this.fsButton,      editBgColor); }
-      if (this.editButton)    {    this.editButton.setEnabled(viewEnabled); setBGColor(this.editButton,    editBgColor); }
-      if (this.approveButton) { this.approveButton.setEnabled(aprvEnabled); setBGColor(this.approveButton, editBgColor); }
-      if (this.txButton)      {      this.txButton.setEnabled(txEnabled);   setBGColor(this.txButton,      txBgColor); }
+      const txBgColor = txEnabled ? themeButtonColor() : themeDisabledButtonColor();
+      const resetEnabled = isCurrentSol && this.state !== "Unused";
+      const resetBgColor = resetEnabled ? themeButtonColor() : themeDisabledButtonColor();
+      if (this.fsButton)      {      this.fsButton.setEnabled(editEnabled);  setBGColor(this.fsButton,      editBgColor);  }
+      if (this.editButton)    {    this.editButton.setEnabled(viewEnabled);  setBGColor(this.editButton,    editBgColor);  }
+      if (this.approveButton) { this.approveButton.setEnabled(aprvEnabled); setBGColor(this.approveButton, editBgColor);  }
+      if (this.resetButton)   {   this.resetButton.setEnabled(resetEnabled); setBGColor(this.resetButton,  resetBgColor); }
+      if (this.txButton)      {      this.txButton.setEnabled(txEnabled);    setBGColor(this.txButton,      txBgColor);    }
 
-      if (planet === "Earth") this.approveButton.setVisibility("visible");
-      else                    this.approveButton.setVisibility("excluded");
+      if (planet === "Earth") { this.approveButton.setVisibility("visible"); this.resetButton.setVisibility("visible"); }
+      else                    { this.approveButton.setVisibility("excluded"); this.resetButton.setVisibility("excluded"); }
 
       const editStr = isCurrentSol ? "Edit..." : "View...";
       this.editButton.setLabel(editStr);
@@ -1765,8 +1787,14 @@ qx.Class.define("myapp.ReportUI",
       log(this.report.attachments);
     },
 
+    onReset()
+    {
+      if (!confirm("Reset \"" + this.name + "\"?\nThis will clear all content and attachments on both planets.")) return;
+      app.resetReport(this.report);
+    },
+
     setContent(content)
-    {      
+    {
       log("setting model content: " + content);
       this.report.content = content;
       this.onChange();

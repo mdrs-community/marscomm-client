@@ -102,6 +102,7 @@ Each Sol (mission day) has a set of daily reports and optionally one or more spe
 - **Upload attachments**: Upload one or more files to attach to a report (multipart form upload).
 - **Attachment Manager**: View, download, or delete attachments on a report.
 - **Approve**: Earth-side users can approve received reports (checkbox).
+- **Reset** (Earth users only): Clears all content, attachments, and state on both planets, returning the report to Empty/TODO. Requires confirmation. Only available on the current Sol. Intended for training and debugging.
 - **Transmit**: Sends the current version of the report to the other planet. A circular progress indicator is shown during transit. On arrival, the other planet's copy is updated and all clients on that planet are notified via SSE.
 
 **Report templates** are loaded from the server. When opening an empty report, the editor is pre-populated with the template for that report type. Templates support placeholders: `{crewNum}`, `{date}`, `{solNum}`.
