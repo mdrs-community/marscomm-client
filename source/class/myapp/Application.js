@@ -1424,8 +1424,10 @@ qx.Class.define("myapp.ChatUI",
         outer.add(inner);
 
         log("time since sent is " + timeSinceSent(im.xmitTime));
-        if (inTransit(im) && crossPlanet)
-          startXmitProgressDisplay(timeRemaining, inner, 55);
+        if (inTransit(im) && crossPlanet) {
+          const startProgress = commsDelay > 0 ? Math.min((commsDelay - timeRemaining) / commsDelay, 0.99) : 0;
+          startXmitProgressDisplay(timeRemaining, inner, 55, null, startProgress);
+        }
 
         this.chatPanel.add(outer);
         if (im.id) this.imContainers[im.id] = outer;
@@ -2173,17 +2175,18 @@ qx.Class.define("myapp.CircularProgress", {
   }
 });
 
-function startXmitProgressDisplay(commsDelay, parentContainer, size, onDone)
+function startXmitProgressDisplay(commsDelay, parentContainer, size, onDone, startProgress)
 {
-  
-  log("starting Xmit display for " + commsDelay);
+  startProgress = startProgress || 0;
+  log("starting Xmit display for " + commsDelay + " (startProgress=" + startProgress + ")");
   let circularProgress = new myapp.CircularProgress();
   circularProgress.setWidth(size);
   circularProgress.setHeight(size);
   parentContainer.add(circularProgress);
 
   const totalUpdates = 100;
-  let progress = 0;
+  let progress = startProgress;
+  if (startProgress > 0) circularProgress.setProgress(startProgress); // show correct initial fill
   let timer = new qx.event.Timer(Math.round(commsDelay * 1000 / totalUpdates)); // update every 1/100 of the commsDelay
   timer.addListener("interval", function() 
   {
