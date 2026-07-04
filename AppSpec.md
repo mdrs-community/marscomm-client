@@ -312,6 +312,22 @@ The client finds the Chat to display by comparing `chat.users` (sorted) against 
 
 ---
 
+## Test / Debug Features
+
+When the server's `config.json` contains `"testMode": true`, additional features are enabled:
+
+### Joke Mode
+
+A **Joke Mode** toggle button appears just above the Send button in the chat input area. Clicking it toggles joke mode on/off. While on:
+- The IM input field is disabled to prevent accidental user typing.
+- The client automatically composes and sends a random space-related joke at a random interval: `max(commsDelay/3 + rand(0, commsDelay), 2)` seconds.
+- After each joke is sent, the next is scheduled with a freshly randomized delay.
+- Jokes are loaded at startup from `source/resource/myapp/jokes.json` (65 entries).
+
+The button label shows `Joke Mode: OFF` (grey) or `Joke Mode: ON` (blue) to indicate the current state.
+
+---
+
 ## Configuration (query parameters)
 
 | Parameter | Default | Description |

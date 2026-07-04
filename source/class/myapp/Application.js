@@ -19,6 +19,8 @@ let allUsers = [];
 let allGroups = [];
 let distributionCooldown = 2;
 let messageArrivalSoundCooldown = 180;
+let testMode = false;
+let jokes = [];
 let lastIMSoundTime = 0;
 let audioCtx = null;
 const darkColor = '#222222';
@@ -294,6 +296,13 @@ qx.Class.define("myapp.Application",
       allGroups = usersData.groups || [];
       distributionCooldown       = (await this.recvDistributionCooldown()).distributionCooldown || 2;
       messageArrivalSoundCooldown = (await this.recvMessageArrivalSoundCooldown()).messageArrivalSoundCooldown ?? 180;
+      testMode = (await this.recvTestMode()).testMode ?? false;
+      if (testMode) {
+        try {
+          const resp = await fetch('resource/myapp/jokes.json');
+          jokes = await resp.json();
+        } catch(e) { log('jokes load failed: ' + e); }
+      }
 
       // Create the main layout
       let doc = this.getRoot();
@@ -900,6 +909,7 @@ qx.Class.define("myapp.Application",
     async recvUsers()                { return  await this.doGET('users'); },
     async recvDistributionCooldown()        { return  await this.doGET('distribution-cooldown'); },
     async recvMessageArrivalSoundCooldown() { return  await this.doGET('message-arrival-sound-cooldown'); },
+    async recvTestMode()                    { return  await this.doGET('test-mode'); },
     
 
     //--------------------------------------------------------------------------------------------
@@ -1157,6 +1167,11 @@ qx.Class.define("myapp.ChatUI",
     replyStrip.add(replyStripCancel);
     chatContainer.add(replyStrip);
 
+    // Joke mode toggle row — only shown when testMode is enabled in server config
+    if (testMode) {
+      this.jokeBtn = makeButton(chatContainer, "Joke Mode: OFF", () => that.toggleJokeMode(), themeDisabledButtonColor(), 12, null);
+    }
+
     let chatInputContainer = new qx.ui.container.Composite(new qx.ui.layout.HBox(10));
     chatInputContainer.setPadding(10);
     chatInputContainer.setPaddingTop(2);
@@ -1213,6 +1228,9 @@ qx.Class.define("myapp.ChatUI",
     imLabels: null,        // map from im.id to { label, user, time } for in-place edit rendering
     lastSentIMId: null,    // server-assigned id of the last IM the current user sent in this chat
     isEditMode: false,     // true when up-arrow recalled the last message for editing
+    jokeMode: false,
+    jokeTimerId: null,
+    jokeBtn: null,
 
     reset()
     {
@@ -1515,6 +1533,34 @@ qx.Class.define("myapp.ChatUI",
     {
       this.replyMode = null;
       this.replyStrip.setVisibility("excluded");
+    },
+
+
+    toggleJokeMode()
+    {
+      this.jokeMode = !this.jokeMode;
+      if (this.jokeBtn) {
+        this.jokeBtn.setLabel(this.jokeMode ? 'Joke Mode: ON' : 'Joke Mode: OFF');
+        setBGColor(this.jokeBtn, this.jokeMode ? themeButtonColor() : themeDisabledButtonColor());
+      }
+      this.chatInput.setEnabled(!this.jokeMode);
+      if (this.jokeMode) this.scheduleNextJoke();
+      else { clearTimeout(this.jokeTimerId); this.jokeTimerId = null; }
+    },
+
+    scheduleNextJoke()
+    {
+      const delay = (commsDelay / 3 + Math.random() * commsDelay) * 1000;
+      this.jokeTimerId = setTimeout(() => this.sendJoke(), Math.max(delay, 2000));
+    },
+
+    sendJoke()
+    {
+      if (!this.jokeMode || !jokes.length) return;
+      const joke = jokes[Math.floor(Math.random() * jokes.length)];
+      this.chatInput.setValue(joke);
+      this.doMessage(this);
+      this.scheduleNextJoke();
     },
 
     scrollToBottom()
