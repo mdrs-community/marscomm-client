@@ -1231,9 +1231,12 @@ qx.Class.define("myapp.ChatUI",
     jokeMode: false,
     jokeTimerId: null,
     jokeBtn: null,
+    activeTimers: null,
 
     reset()
     {
+      if (this.activeTimers) this.activeTimers.forEach(t => { try { t.stop(); } catch(e) {} });
+      this.activeTimers = [];
       try { this.chatPanel.removeAll(); } catch (e) { log("clean et up"); }
       this.ims = [];
       this.imContainers = {};
@@ -1426,7 +1429,8 @@ qx.Class.define("myapp.ChatUI",
         log("time since sent is " + timeSinceSent(im.xmitTime));
         if (inTransit(im) && crossPlanet) {
           const startProgress = commsDelay > 0 ? Math.min((commsDelay - timeRemaining) / commsDelay, 0.99) : 0;
-          startXmitProgressDisplay(timeRemaining, inner, 55, null, startProgress);
+          const pw = startXmitProgressDisplay(timeRemaining, inner, 55, null, startProgress);
+          if (pw && pw.timer && this.activeTimers) this.activeTimers.push(pw.timer);
         }
 
         this.chatPanel.add(outer);
@@ -2202,6 +2206,7 @@ function startXmitProgressDisplay(commsDelay, parentContainer, size, onDone, sta
   timer.start();
 
   circularProgress.forceDone = function () { progress = 1.1; }
+  circularProgress.timer = timer;
 
   return circularProgress;
 }
