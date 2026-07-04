@@ -102,6 +102,7 @@ Each Sol (mission day) has a set of daily reports and optionally one or more spe
 - **Upload attachments**: Upload one or more files to attach to a report (multipart form upload).
 - **Attachment Manager**: View, download, or delete attachments on a report.
 - **Approve**: Earth-side users can approve received reports (checkbox).
+- **Access control**: Each report definition in `config.json` carries an optional `access[]` list of role or group names. After login, the client hides any report whose access list does not include the logged-in user's role or any group they belong to. Built-in group names `"All"`, `"Mission Control"` (all Earth users), and `"Crew"` (all Mars users) are supported alongside custom groups. If `access` is omitted the report is visible to everyone. Visibility is restored to all reports on logout.
 - **Reset** (Earth users only): Clears all content, attachments, and state on both planets, returning the report to Empty/TODO. Requires confirmation. Only available on the current Sol. Intended for training and debugging.
 - **Transmit**: Sends the current version of the report to the other planet. A circular progress indicator is shown during transit. On arrival, the other planet's copy is updated and all clients on that planet are notified via SSE.
 

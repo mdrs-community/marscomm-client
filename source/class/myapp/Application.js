@@ -415,9 +415,10 @@ qx.Class.define("myapp.Application",
       let reportNames = await this.recvReports();
       let reportUIs = [];
       log(reportNames);
-      reportNames.forEach((name, index) =>
+      reportNames.forEach((meta, index) =>
       {
-        let reportUI = new myapp.ReportUI(name, rightPanel, this);
+        let reportUI = new myapp.ReportUI(meta.name, rightPanel, this);
+        reportUI.meta = meta; // store access metadata for post-login filtering
         reportUIs.push(reportUI);
       });
       this.reportUIs = reportUIs;
@@ -991,6 +992,7 @@ qx.Class.define("myapp.Application",
         // set up server-sent events
         // eventSource is tied to login because the planet can change
         this.setupSSE();
+        this.applyReportAccess();
       } 
       else if (result && result.message)
         alert(result.message);
@@ -998,8 +1000,32 @@ qx.Class.define("myapp.Application",
         alert("Login failure for " + usernameIn);
     },
 
+    applyReportAccess()
+    {
+      if (!this.reportUIs) return;
+      for (const rui of this.reportUIs)
+        rui.container.setVisibility(this.canAccessReport(rui.meta) ? "visible" : "excluded");
+    },
+
+    canAccessReport(meta)
+    {
+      if (!meta || !meta.access || !meta.access.length) return true;
+      const user = allUsers.find(u => u.name === username);
+      if (!user) return false;
+      for (const entry of meta.access) {
+        if (entry === "All") return true;
+        if (entry === user.role) return true;
+        if (entry === "Mission Control" && user.planet === "Earth") return true;
+        if (entry === "Crew" && user.planet === "Mars") return true;
+        const group = allGroups.find(g => g.name === entry);
+        if (group && group.roles.includes(user.role)) return true;
+      }
+      return false;
+    },
+
     logout()
     {
+      if (this.reportUIs) this.reportUIs.forEach(rui => rui.container.setVisibility("visible"));
       this.eventSource.close();
       this.eventSource = null;
       this.isLoggedIn = false;
