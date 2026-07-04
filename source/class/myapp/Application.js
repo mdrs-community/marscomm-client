@@ -1518,7 +1518,10 @@ qx.Class.define("myapp.ChatUI",
 
     scrollToBottom()
     {
-      setTimeout(() => { try { this.chatScroll.scrollToY(this.chatScroll.getScrollMaxY()); } catch(e) {} }, 50);
+      // Double-rAF ensures Qooxdoo's async layout queue has flushed before we read scrollMaxY
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        try { this.chatScroll.scrollToY(this.chatScroll.getScrollMaxY()); } catch(e) {}
+      }));
     },
 
     // Send a single emoji as a reaction to targetIM (Level 2A quick-response).
@@ -1718,6 +1721,7 @@ qx.Class.define("myapp.ReportUI",
       const viewEnabled = this.state !== "Unused"; // edit button now works in View mode for non-current Sols
       const editEnabled = viewEnabled && isCurrentSol;
       const aprvEnabled = editEnabled && (this.state === "Received" || this.state === "Approved");
+      const aprvBgColor = aprvEnabled ? themeButtonColor() : themeDisabledButtonColor();
       const editBgColor = editEnabled ? themeButtonColor() : themeDisabledButtonColor();
       const txEnabled = isCurrentSol && editEnabled && this.state !== "Empty";
       const txBgColor = txEnabled ? themeButtonColor() : themeDisabledButtonColor();
@@ -1725,7 +1729,7 @@ qx.Class.define("myapp.ReportUI",
       const resetBgColor = resetEnabled ? themeButtonColor() : themeDisabledButtonColor();
       if (this.fsButton)      {      this.fsButton.setEnabled(editEnabled);  setBGColor(this.fsButton,      editBgColor);  }
       if (this.editButton)    {    this.editButton.setEnabled(viewEnabled);  setBGColor(this.editButton,    editBgColor);  }
-      if (this.approveButton) { this.approveButton.setEnabled(aprvEnabled); setBGColor(this.approveButton, editBgColor);  }
+      if (this.approveButton) { this.approveButton.setEnabled(aprvEnabled); setBGColor(this.approveButton, aprvBgColor);  }
       if (this.resetButton)   {   this.resetButton.setEnabled(resetEnabled); setBGColor(this.resetButton,  resetBgColor); }
       if (this.txButton)      {      this.txButton.setEnabled(txEnabled);    setBGColor(this.txButton,      txBgColor);    }
 
