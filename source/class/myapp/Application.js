@@ -5,6 +5,9 @@
 
 let urlPrefix = 'http://localhost:8081/';
 let refDate = null;
+let missionStartDate = null; // Date object (local midnight of Sol 1), or null in legacy mode
+let solDuration = "Earth";   // "Earth" or "Mars"
+const MARS_SOL_MS = 88775244; // one Martian sol in milliseconds (24h 39m 35.244s)
 let commsDelay = 0;
 let crewNum = 0;
 let rotationLength = 0;
@@ -50,11 +53,18 @@ function arrayBufferToBase64(buffer)
   return btoa(binary);
 }
 
-function getSolNum(date) 
+function getSolNum(date)
 {
-  if (!date) date = new Date(); 
-  let solNum = Math.floor((date.getTime() - refDate.getTime()) / (1000 * 60 * 60 * 24)); 
-  if (solNum > rotationLength-1) solNum = rotationLength-1;
+  if (!date) date = new Date();
+  if (missionStartDate)
+  {
+    const solDurationMs = (solDuration === "Mars") ? MARS_SOL_MS : (1000 * 60 * 60 * 24);
+    const sol = Math.floor((date.getTime() - missionStartDate.getTime()) / solDurationMs) + 1;
+    return Math.max(0, Math.min(sol, rotationLength + 1));
+  }
+  // legacy: use refDate (today at server start = Sol 0)
+  let solNum = Math.floor((date.getTime() - refDate.getTime()) / (1000 * 60 * 60 * 24));
+  if (solNum > rotationLength - 1) solNum = rotationLength - 1;
   return solNum;
 }
 
@@ -120,18 +130,25 @@ function makeLabel(container, str, color, fontSize)
   return label;
 }
 
-function doDownload(urlPath, filename)
+async function doDownload(urlPath, filename)
 {
-  // Create an invisible link to trigger the download
-  var link = document.createElement("a");
-  link.href = urlPrefix + urlPath;
-  
-  log("attempting download of " + link.href);
-  // The desired filename for the download, BUT seems to be overridden by the Content-Disosition header set by server
-  link.download = filename; 
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
+  const url = urlPrefix + urlPath;
+  log("attempting download of " + url);
+  try
+  {
+    const response = await fetch(url);
+    if (!response.ok) { alert("Download failed: " + response.statusText); return; }
+    const blob = await response.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = blobUrl;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(blobUrl);
+  }
+  catch (e) { log("doDownload error: " + e.message); alert("Download failed"); }
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
@@ -207,9 +224,16 @@ qx.Class.define("myapp.Application",
       rotationLength = await this.recvRotationLength();
       const organization = await this.recvOrganization();
       const version      = await this.recvVersion();
-      refDate = new Date(await this.recvRefDate());
+      const refDateInfo = await this.recvRefDate();
+      refDate = new Date(refDateInfo.refDate);
       this.refDate = refDate;
-      log("commsDelay=" + commsDelay + ", refDate=" + this.refDate);
+      if (refDateInfo.missionStartDate)
+      {
+        const [y, m, d] = refDateInfo.missionStartDate.split('-').map(Number);
+        missionStartDate = new Date(y, m-1, d);
+      }
+      solDuration = refDateInfo.solDuration || "Earth";
+      log("commsDelay=" + commsDelay + ", refDate=" + this.refDate + ", missionStartDate=" + missionStartDate + ", solDuration=" + solDuration);
       const usersData = await this.recvUsers();
       allUsers = usersData.users || [];
       allGroups = usersData.groups || [];
@@ -243,9 +267,9 @@ qx.Class.define("myapp.Application",
       topPanel.add(new qx.ui.core.Spacer(), { flex: 1 });
       makeLabel(topPanel, "Crew: " + crewNum, themeBlueText(), 24);
       topPanel.add(new qx.ui.core.Spacer(), { flex: 0 });
-      makeLabel(topPanel, "Sol", themeBlueText(), 24);
+      makeLabel(topPanel, "Sol", solDuration === "Mars" ? "red" : themeBlueText(), 24);
       let numberInput = new qx.ui.form.Spinner();
-      numberInput.set({ minimum: 0, maximum: rotationLength-1 });
+      numberInput.set({ minimum: 0, maximum: getSolNum() });
       numberInput.addListener("changeValue", async function(event) 
       {
         const solNum = event.getData(); // proper event is not available inside the setTimeout callback
@@ -258,6 +282,56 @@ qx.Class.define("myapp.Application",
       let todayButton = new qx.ui.form.Button("Today");
       todayButton.addListener("execute", function() { numberInput.setValue(getSolNum()); });
       topPanel.add(todayButton);
+
+      if (missionStartDate)
+      {
+        const phaseBox = new qx.ui.container.Composite(new qx.ui.layout.HBox(4));
+        phaseBox.setPaddingLeft(8);
+        const phaseLabel = makeLabel(phaseBox, "", "orange", 14);
+        const timeBox = new qx.ui.container.Composite(new qx.ui.layout.VBox(0));
+        const earthTimeLabel = makeLabel(timeBox, "", themeBlueText(), 11);
+        const solTimeLabel   = makeLabel(timeBox, "", "red", 11);
+        phaseBox.add(timeBox);
+        topPanel.add(phaseBox);
+
+        function updatePhaseDisplay()
+        {
+          const now = new Date();
+          const sol = getSolNum(now);
+          numberInput.setMaximum(sol);
+          const pad = n => n.toString().padStart(2, '0');
+          if (sol === 0)
+          {
+            phaseLabel.setValue("PREFLIGHT");
+            phaseLabel.setTextColor("orange");
+            earthTimeLabel.setValue("");
+            solTimeLabel.setValue("");
+          }
+          else if (sol === rotationLength + 1)
+          {
+            phaseLabel.setValue("POSTFLIGHT");
+            phaseLabel.setTextColor("orange");
+            earthTimeLabel.setValue("");
+            solTimeLabel.setValue("");
+          }
+          else
+          {
+            const earthDate = now.getFullYear() + "-" + pad(now.getMonth()+1) + "-" + pad(now.getDate());
+            phaseLabel.setValue(earthDate);
+            phaseLabel.setTextColor(themeStdText());
+            earthTimeLabel.setValue(pad(now.getHours()) + ":" + pad(now.getMinutes()));
+            // Sol time: elapsed Earth-duration hours/minutes since start of the current Sol,
+            // where Sol length is determined by solDuration config ("Earth" = 24h, "Mars" = 24h39m35s)
+            const solDurMs = (solDuration === "Mars") ? MARS_SOL_MS : (1000 * 60 * 60 * 24);
+            const elapsed = (now.getTime() - missionStartDate.getTime()) % solDurMs;
+            const solH = Math.floor(elapsed / 3600000);
+            const solM = Math.floor((elapsed % 3600000) / 60000);
+            solTimeLabel.setValue(solH + ":" + pad(solM));
+          }
+        }
+        updatePhaseDisplay();
+        setInterval(updatePhaseDisplay, 60000);
+      }
 
       topPanel.add(new qx.ui.core.Spacer(), { flex: 1 });
          
@@ -489,8 +563,8 @@ qx.Class.define("myapp.Application",
 
       this.templates = await this.recvReportTemplates();
 
-      makeButton(topPanel, "Download Attachments...", () => this.downloadAttachments(),           themeButtonColor(), 16, this);
-      makeButton(topPanel, "Download Reports...",     () => this.createZipFromReports(reportUIs), themeButtonColor(), 16, this);
+      makeButton(topPanel, "⬇ Attachments...", () => this.downloadAttachments(),           themeButtonColor(), 16, this);
+      makeButton(topPanel, "⬇ Reports...",     () => this.createZipFromReports(reportUIs), themeButtonColor(), 16, this);
       makeButton(topPanel, " ", () => this.toggleTheme(), themeButtonColor(), 16, this);
 
       this.loginButton = makeButton(topPanel, "Login", () => this.handleLoginLogout(), "#ffcccc", 16);
@@ -750,7 +824,7 @@ qx.Class.define("myapp.Application",
     async recvRotationLength()  { return (await this.doGET('rotation-length')).rotationLength; },
     async recvOrganization()    { return (await this.doGET('organization')).organization; },
     async recvVersion()         { return  await this.doGET('version'); },
-    async recvRefDate()         { return (await this.doGET('ref-date')).refDate; },
+    async recvRefDate()         { return  await this.doGET('ref-date'); },
     async recvReportTemplates() { return  await this.doGET('reports/templates'); },
     async recvAttachments()          { return  await this.doGET('attachments/' + planet + '/' + getSolNum()); },
     async recvUsers()                { return  await this.doGET('users'); },
@@ -1215,10 +1289,10 @@ qx.Class.define("myapp.ReportUI",
 
     let fsb = new qx.ui.form.FileSelectorButton("Upload...");
     fsb.setMultiple(true);
-    fsb.addListener("changeFileSelection", function(e) 
+    fsb.addListener("changeFileSelection", function(e)
     {
+      if (!that.isCurrentSol()) return; // file dialog can open even when button is visually disabled
       let files = e.getData();
-      
       log("there are actually " + files.length + " attachments");
       app.sendAttachments(that.report, files);
     }, this);
@@ -1794,16 +1868,16 @@ qx.Class.define("myapp.AttachmentManager",
   {
     __attachmentList: null,
 
-    __onDownload: function() 
+    __onDownload: function()
     {
       let selection = this.__attachmentList.getSelection();
       if (selection.length === 0) { alert("Please select an attachment to download."); return; }
       selection.forEach(selectedItem =>
       {
         const attachment = selectedItem.getUserData("attachment");
-        let downloadUrl = "/download?filename=" + encodeURIComponent(attachment.getFilename());
-        doDownload(downloadUrl, attachment.filename);
-      });       
+        const href = 'attachments/download?file=' + encodeURIComponent(attachment.content) + '&name=' + encodeURIComponent(attachment.filename);
+        doDownload(href, attachment.filename);
+      });
     },
 
     __onDelete: function() 

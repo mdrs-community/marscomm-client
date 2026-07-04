@@ -92,15 +92,48 @@ Each Sol (mission day) has a set of daily reports and optionally one or more spe
 
 ### 3. Download
 
-- **Download Reports ZIP**: Downloads a ZIP archive containing all reports for the current Sol as `.txt` files, plus all attachments grouped by report name.
-- **Download Attachments ZIP**: Downloads a server-side ZIP of all raw attachment files for the current Sol and planet.
+- **⬇ Reports ZIP**: Downloads a ZIP archive containing all reports for the current Sol as `.txt` files, plus all attachments grouped by report name.
+- **⬇ Attachments ZIP**: Downloads a server-side ZIP of all raw attachment files for the current Sol and planet.
+
+The top-bar buttons for these actions use the Unicode downward-arrow character ⬇ (U+2B07) in place of the word "Download" to save space.
 
 ### 4. Sol Navigation
 
-- A spinner in the top bar allows the user to navigate to any Sol in the rotation (0 to rotationLength-1).
+- A spinner in the top bar allows the user to navigate to any Sol (0 to rotationLength+1).
 - A "Today" button next to the spinner sets the spinner to the Sol number corresponding to today's date.
-- The current Sol is computed from the server-provided reference date.
+- The current Sol is computed from the server-provided reference date and `missionStartDate`.
 - When the Sol changes, the chat and report panels are refreshed with data for that Sol.
+
+**Pre-flight and post-flight phases:**
+
+The server config may include a `missionStartDate` (YYYY-MM-DD) that defines when Sol 1 begins. This enables MarsComm to be used before and after the formal mission:
+
+- **Before `missionStartDate`** — `getSolNum()` returns 0 for all dates. All pre-mission messages accumulate in Sol 0. The client shows an orange **PREFLIGHT** badge next to the Today button (same orange as the TODO report name color).
+- **Sol 1 through Sol `rotationLength`** — normal mission operation. Sol 1 = `missionStartDate`, Sol 2 = the next calendar day (or Mars sol), etc.
+- **`rotationLength` or more days after `missionStartDate`** — `getSolNum()` returns `rotationLength+1`. All post-mission messages accumulate in Sol `rotationLength+1`. The client shows a **POSTFLIGHT** badge in the same location as the PREFLIGHT badge.
+
+The badge reflects the real-time mission phase (based on today's date), independent of which Sol the user has navigated to in the spinner.
+
+**Sol duration:**
+
+The server config `solDuration` field (`"Earth"` or `"Mars"`, default `"Earth"`) controls the length of one Sol. This is used for both Sol number computation and Sol time display. It only applies when `missionStartDate` is set.
+
+- **`"Earth"`** (default): each Sol is one Earth calendar day (86,400,000 ms). Sol 1 = `missionStartDate`, Sol 2 = the next Earth calendar day, etc. Sol time equals Earth local time.
+- **`"Mars"`**: each Sol is one Martian day (88,775,244 ms — 24 h 39 m 35.244 s). By definition, Sol 1 begins at exactly midnight (browser local time) on `missionStartDate`; subsequent Sols drift from Earth calendar dates by ~39 minutes per Sol.
+
+The term "Sol" is used here in a generalised sense: it refers to whatever day length is configured, not strictly to a Martian day. Analog missions (such as MDRS) routinely use "Sol" as an alias for "day" regardless of the actual duration, to reinforce the mission atmosphere. In both modes the pre/post-flight clamping to Sol 0 and Sol `rotationLength+1` is unchanged.
+
+**Earth date and time display (mission phase only):**
+
+During the mission (Sol 1 through Sol `rotationLength`), the area next to the Today button shows:
+- The current Earth calendar date in **YYYY-MM-DD** format.
+- To the right of the date, stacked vertically: Earth local time on top (blue, HH:MM) and Sol time below (red, HH:MM). Sol time is the elapsed Earth-duration hours and minutes since the start of the current Sol, computed as `(now − missionStartDate_midnight) mod solDurationMs`. When `solDuration = "Earth"`, Sol time equals Earth local time (both read 24h cycles). When `solDuration = "Mars"`, Sol time drifts ~39 min/sol behind Earth time. Both times update every minute via `setInterval`; no server contact is needed.
+
+During PREFLIGHT and POSTFLIGHT phases the PREFLIGHT/POSTFLIGHT badge is shown in this area instead (no date/time clock).
+
+**"Sol" label color:**
+
+When `solDuration = "Mars"`, the **Sol** label in the top bar is red (matching the Sol time display). When `solDuration = "Earth"` it retains its current color.
 
 ### 5. Authentication
 
@@ -193,7 +226,7 @@ All server calls go to `urlPrefix`, which defaults to `http://localhost:8081/` b
 | `GET /crew-num` | Crew number |
 | `GET /rotation-length` | Number of Sols in rotation |
 | `GET /organization` | Organization name (`MDRS` or `LunAres`) |
-| `GET /ref-date` | Reference date (Sol 0 start date) |
+| `GET /ref-date` | `{ refDate, missionStartDate, solDuration }` — `refDate` is one Earth day before `missionStartDate`; `missionStartDate` is YYYY-MM-DD of Sol 1 (null if not configured); `solDuration` is `"Earth"` or `"Mars"` |
 | `GET /users` | List of all users `[{role, name, planet, abbr?}]` (no passwords) |
 | `GET /sols/:solNum` | Sol data (chats + reports for both planets) |
 | `GET /reports` | List of report names |
