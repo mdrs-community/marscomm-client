@@ -18,6 +18,9 @@ let theme = 0; // 0=dark, 1=light
 let allUsers = [];
 let allGroups = [];
 let distributionCooldown = 2;
+let messageArrivalSoundCooldown = 180;
+let lastIMSoundTime = 0;
+let audioCtx = null;
 const darkColor = '#222222';
 const lightColor = '#eeeeee';
 function themeBgColor()       { return theme ? lightColor : darkColor; }
@@ -151,6 +154,57 @@ async function doDownload(urlPath, filename)
   catch (e) { log("doDownload error: " + e.message); alert("Download failed"); }
 }
 
+function getAudioContext()
+{
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  return audioCtx;
+}
+
+// Short hi-tech chirp: frequency sweeps up rapidly. Subject to cooldown.
+function playIMArrivedSound()
+{
+  const now = Date.now();
+  if (now - lastIMSoundTime < messageArrivalSoundCooldown * 1000) return;
+  lastIMSoundTime = now;
+  try {
+    const ctx = getAudioContext();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.type = 'sine';
+    const t = ctx.currentTime;
+    osc.frequency.setValueAtTime(440, t);
+    osc.frequency.exponentialRampToValueAtTime(1200, t + 0.12);
+    osc.frequency.exponentialRampToValueAtTime(880, t + 0.22);
+    gain.gain.setValueAtTime(0.25, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
+    osc.start(t);
+    osc.stop(t + 0.35);
+  } catch(e) { log("IM sound error: " + e); }
+}
+
+// Two-note ascending chime for report arrival. No cooldown.
+function playReportArrivedSound()
+{
+  try {
+    const ctx = getAudioContext();
+    [523, 784].forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type = 'sine';
+      const t = ctx.currentTime + i * 0.25;
+      osc.frequency.setValueAtTime(freq, t);
+      gain.gain.setValueAtTime(0.25, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.6);
+      osc.start(t);
+      osc.stop(t + 0.6);
+    });
+  } catch(e) { log("report sound error: " + e); }
+}
+
 //////////////////////////////////////////////////////////////////////////////////////////////////
 
 function newIM(content)
@@ -237,7 +291,8 @@ qx.Class.define("myapp.Application",
       const usersData = await this.recvUsers();
       allUsers = usersData.users || [];
       allGroups = usersData.groups || [];
-      distributionCooldown = (await this.recvDistributionCooldown()).distributionCooldown || 2;
+      distributionCooldown       = (await this.recvDistributionCooldown()).distributionCooldown || 2;
+      messageArrivalSoundCooldown = (await this.recvMessageArrivalSoundCooldown()).messageArrivalSoundCooldown ?? 180;
 
       // Create the main layout
       let doc = this.getRoot();
@@ -664,7 +719,7 @@ qx.Class.define("myapp.Application",
       this.sendIM(formattedMessage);
     },
 
-    parseMessage(message) 
+    parseMessage(message)
     {
       // Replace basic emoticons
       message = message.replace(/:\)/g, '😊');
@@ -674,6 +729,9 @@ qx.Class.define("myapp.Application",
       message = message.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
       message = message.replace(/__(.*?)__/g, '<em>$1</em>');
       message = message.replace(/`(.*?)`/g, '<code>$1</code>');
+
+      // Turn bare URLs into clickable links (applied last so markdown runs first)
+      message = message.replace(/(https?:\/\/[^\s<>"]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
 
       return message;
     },
@@ -745,7 +803,13 @@ qx.Class.define("myapp.Application",
     async sendIM(im, users)
     {
       const body = { message: im.content, users: users || [] };
+      if (im.replyTo) body.replyTo = im.replyTo;
       return await this.doPOST('ims', body);
+    },
+
+    async sendIMEdit(id, content, users)
+    {
+      return await this.doPOST('ims/edit', { id, message: content, users: users || [] });
     },
 
     async sendLogin(username, password)
@@ -828,7 +892,8 @@ qx.Class.define("myapp.Application",
     async recvReportTemplates() { return  await this.doGET('reports/templates'); },
     async recvAttachments()          { return  await this.doGET('attachments/' + planet + '/' + getSolNum()); },
     async recvUsers()                { return  await this.doGET('users'); },
-    async recvDistributionCooldown() { return  await this.doGET('distribution-cooldown'); },
+    async recvDistributionCooldown()        { return  await this.doGET('distribution-cooldown'); },
+    async recvMessageArrivalSoundCooldown() { return  await this.doGET('message-arrival-sound-cooldown'); },
     
 
     //--------------------------------------------------------------------------------------------
@@ -950,6 +1015,18 @@ qx.Class.define("myapp.Application",
           {
             obj.xmitTime = new Date(obj.xmitTime); // ALWAYS have to fix the date.  ALWAYS
             app.getReportUIbyName(obj.name).update(obj);
+            if (obj.transmitted && obj.authorPlanet !== planet) playReportArrivedSound();
+          }
+          else if (obj.type === "IMEdit")
+          {
+            const xmitTime = new Date(obj.xmitTime);
+            const apply = () => app.chatUI.applyIMEdit(obj);
+            if (obj.planet !== planet && commsDelay > 0)
+            {
+              const remaining = commsDelay - (Date.now() - xmitTime.getTime()) / 1000;
+              if (remaining > 0) { setTimeout(apply, remaining * 1000); return; }
+            }
+            apply();
           }
       };
       this.eventSource.onerror = function(e)
@@ -1045,21 +1122,66 @@ qx.Class.define("myapp.ChatUI",
     let chatScroll = new qx.ui.container.Scroll();
     chatScroll.add(chatPanel);
     chatContainer.add(chatScroll, { flex: 1 });
+    this.chatScroll = chatScroll;
+
+    // Level 2B: emoji quick-insert bar above the input row
+    const QUICK_EMOJIS = ['👍', '😊', '😉', '😞'];
+    let emojiInsertBar = new qx.ui.container.Composite(new qx.ui.layout.HBox(6));
+    emojiInsertBar.setPaddingLeft(10);
+    emojiInsertBar.setPaddingBottom(2);
+    chatContainer.add(emojiInsertBar);
+
+    // Reply strip (hidden until user clicks ↩ on a message)
+    let replyStrip = new qx.ui.container.Composite(new qx.ui.layout.HBox(6));
+    replyStrip.setPaddingLeft(10);
+    replyStrip.setPaddingBottom(2);
+    replyStrip.setVisibility("excluded");
+    this.replyStrip = replyStrip;
+    const replyStripLabel = new qx.ui.basic.Label("");
+    replyStripLabel.setTextColor("#888888");
+    replyStripLabel.setFont(new qx.bom.Font(12, ["Arial"]));
+    this.replyStripLabel = replyStripLabel;
+    replyStrip.add(replyStripLabel);
+    const replyStripCancel = new qx.ui.basic.Label("✕");
+    replyStripCancel.set({ cursor: "pointer", selectable: false });
+    replyStripCancel.setTextColor("#888888");
+    replyStripCancel.setFont(new qx.bom.Font(12, ["Arial"]));
+    replyStripCancel.addListener("click", () => that.clearReplyMode());
+    replyStrip.add(replyStripCancel);
+    chatContainer.add(replyStrip);
 
     let chatInputContainer = new qx.ui.container.Composite(new qx.ui.layout.HBox(10));
     chatInputContainer.setPadding(10);
+    chatInputContainer.setPaddingTop(2);
     chatContainer.add(chatInputContainer);
-  
+
     let chatInput = new qx.ui.form.TextField();
     this.chatInput = chatInput;
     chatInput.setBackgroundColor(themeBgColor());
     chatInput.setTextColor(themeStdText());
     chatInput.setPlaceholder("Type a message...");
-    chatInput.addListener("keypress", function(e) 
-      { if (e.getKeyIdentifier() === "Enter") { that.doMessage(that); } } );
+    chatInput.addListener("keypress", function(e)
+    {
+      if (e.getKeyIdentifier() === "Enter") { that.doMessage(that); }
+      else if (e.getKeyIdentifier() === "Up" && !chatInput.getValue() && that.lastSentMessage)
+      {
+        chatInput.setValue(that.lastSentMessage);
+        if (that.lastSentIMId) { that.isEditMode = true; that.sendBtn.setLabel("Update"); }
+      }
+    });
     chatInputContainer.add(chatInput, { flex: 1 });
 
-    makeButton(chatInputContainer, "Send", () => this.doMessage(this), themeButtonColor(), 14, this);
+    this.sendBtn = makeButton(chatInputContainer, "Send", () => this.doMessage(this), themeButtonColor(), 14, this);
+
+    // Populate Level 2B emoji bar after chatInput exists
+    for (const emoji of QUICK_EMOJIS)
+    {
+      const lbl = new qx.ui.basic.Label(emoji);
+      lbl.set({ cursor: "pointer", selectable: false });
+      lbl.setFont(new qx.bom.Font(18, ["Arial"]));
+      lbl.addListener("click", () => { chatInput.setValue((chatInput.getValue() || '') + emoji); chatInput.focus(); });
+      emojiInsertBar.add(lbl);
+    }
   },
 
   /* scenarios: 
@@ -1077,8 +1199,25 @@ qx.Class.define("myapp.ChatUI",
     chatTitle: null,
     chats: null,
     distribution: null,
+    lastSentMessage: null,
+    replyMode: null,       // null or { id, user, snippet } when replying to a message
+    imContainers: null,    // map from im.id to Qooxdoo container widget, for scroll-to-anchor
+    reactionRows: null,    // map from im.id to Label widget showing accumulated emoji reactions
+    imLabels: null,        // map from im.id to { label, user, time } for in-place edit rendering
+    lastSentIMId: null,    // server-assigned id of the last IM the current user sent in this chat
+    isEditMode: false,     // true when up-arrow recalled the last message for editing
 
-    reset() { try { this.chatPanel.removeAll(); } catch (e) { log("clean et up"); } this.ims = []; },
+    reset()
+    {
+      try { this.chatPanel.removeAll(); } catch (e) { log("clean et up"); }
+      this.ims = [];
+      this.imContainers = {};
+      this.reactionRows = {};
+      this.imLabels = {};
+      this.lastSentIMId = null;
+      this.isEditMode = false;
+      if (this.sendBtn) this.sendBtn.setLabel("Send");
+    },
 
     updateChatTitle()
     {
@@ -1109,6 +1248,7 @@ qx.Class.define("myapp.ChatUI",
       for (let i = 0; i < this.ims.length; i++)
         this.addIM(this.ims[i], chat ? chat.users : null);
       this.updateChatTitle();
+      this.scrollToBottom();
     },
 
     setDistribution(users)
@@ -1122,6 +1262,7 @@ qx.Class.define("myapp.ChatUI",
       for (let i = 0; i < this.ims.length; i++)
         this.addIM(this.ims[i], chat ? chat.users : null);
       this.updateChatTitle();
+      this.scrollToBottom();
     },
 
     addIMFromSSE(obj)
@@ -1147,6 +1288,7 @@ qx.Class.define("myapp.ChatUI",
       else
       {
         const doUnread = () => {
+          if (obj.user !== username) playIMArrivedSound();
           if (isNewChat && app.rebuildChatList) app.rebuildChatList(this.chats);
           if (app.markChatUnread) app.markChatUnread(obj.chatUsers);
         };
@@ -1168,18 +1310,91 @@ qx.Class.define("myapp.ChatUI",
       const timeRemaining = commsDelay - timeInTransit(im);
       if (im.planet === planet || !inTransit(im))
       {
-        let container = new qx.ui.container.Composite(new qx.ui.layout.HBox(10));
+        if (im.user !== username) playIMArrivedSound();
 
-        const str = '<b>' + im.user + '</b> <font size="-2">' + (new Date()).toString() + ':</font><br>' + im.content + '<br> <br>';
-        const label = new qx.ui.basic.Label().set( { value: str, rich: true });
+        // Emoji reactions: annotate the target message rather than adding a timeline entry
+        if (im.replyTo && im.replyTo.isReaction)
+        {
+          const targetOuter = this.imContainers && this.imContainers[im.replyTo.id];
+          if (targetOuter)
+          {
+            if (!this.reactionRows[im.replyTo.id])
+            {
+              const rl = new qx.ui.basic.Label('');
+              rl.setTextColor('#aaaaaa');
+              rl.setFont(new qx.bom.Font(12, ['Arial']));
+              rl.setPaddingLeft(4);
+              targetOuter.add(rl);
+              this.reactionRows[im.replyTo.id] = rl;
+            }
+            const rl = this.reactionRows[im.replyTo.id];
+            const cur = rl.getValue() || '';
+            rl.setValue(cur + (cur ? '  ' : '') + im.content + '\u2009' + im.user);
+            return;
+          }
+          // target not in view — fall through to normal rendering
+        }
+
+        // Outer VBox holds optional reply header + inner row
+        const outer = new qx.ui.container.Composite(new qx.ui.layout.VBox(2));
+        outer.setPaddingBottom(4);
+
+        // Reply header: shown for typed replies (not for emoji reactions)
+        if (im.replyTo && !im.replyTo.isReaction)
+        {
+          const snippet = im.replyTo.snippet || '';
+          const headerLabel = new qx.ui.basic.Label('↩ ' + im.replyTo.user + ': ' + snippet);
+          headerLabel.set({ rich: false, selectable: false, cursor: "pointer" });
+          headerLabel.setTextColor("#888888");
+          headerLabel.setFont(new qx.bom.Font(11, ["Arial"]));
+          headerLabel.addListener("click", () => this.scrollToIM(im.replyTo.id));
+          outer.add(headerLabel);
+        }
+
+        // Inner row: message label + emoji/reply bar
+        const inner = new qx.ui.container.Composite(new qx.ui.layout.HBox(6));
+
+        const displayTime = new Date();
+        const str = '<b>' + im.user + '</b> <font size="-2">' + displayTime.toString() + ':</font><br>' + im.content + '<br> <br>';
+        const label = new qx.ui.basic.Label().set({ value: str, rich: true, selectable: true });
         const color = theme ? ((im.user === username) ? "#0000bb" : "black") : (im.user === username) ? "#9999ff" : "white";
         label.setTextColor(color);
         label.setFont(new qx.bom.Font(16, ["Arial"]));
-        container.add(label);
+        inner.add(label, { flex: 1 });
+        if (im.id)
+        {
+          this.imLabels[im.id] = { label, user: im.user, time: displayTime };
+          if (im.user === username) this.lastSentIMId = im.id;
+        }
+
+        // Per-message emoji bar + reply button (Level 2A)
+        const actionBar = new qx.ui.container.Composite(new qx.ui.layout.HBox(3));
+        actionBar.setPaddingTop(4);
+        for (const emoji of ['👍', '😊', '😉', '😞'])
+        {
+          const btn = new qx.ui.basic.Label(emoji);
+          btn.set({ cursor: "pointer", selectable: false });
+          btn.setFont(new qx.bom.Font(14, ["Arial"]));
+          btn.addListener("click", () => this.doQuickEmoji(emoji, im, this));
+          actionBar.add(btn);
+        }
+        const replyBtn = new qx.ui.basic.Label(' ↩');
+        replyBtn.set({ cursor: "pointer", selectable: false });
+        replyBtn.setTextColor("#888888");
+        replyBtn.setFont(new qx.bom.Font(13, ["Arial"]));
+        replyBtn.addListener("click", () => this.enterReplyMode(im));
+        actionBar.add(replyBtn);
+        inner.add(actionBar);
+
+        outer.add(inner);
+
         log("time since sent is " + timeSinceSent(im.xmitTime));
         if (inTransit(im) && crossPlanet)
-          startXmitProgressDisplay(timeRemaining, container, 55);
-        this.chatPanel.add(container);
+          startXmitProgressDisplay(timeRemaining, inner, 55);
+
+        this.chatPanel.add(outer);
+        if (im.id) this.imContainers[im.id] = outer;
+        this.scrollToBottom();
       }
       else // IM is NOT from this planet and has not yet arrived, so wait for it
       {
@@ -1201,16 +1416,35 @@ qx.Class.define("myapp.ChatUI",
         return;
       }
 
-      // Use the current checkbox state as the target distribution; cancel any pending cooldown
+      // Use the current checkbox state as the target distribution
       let targetUsers = app.getCheckboxSelection ? app.getCheckboxSelection() : that.distribution;
       if (!targetUsers.includes(username)) targetUsers = targetUsers.concat([username]);
+
+      // Edit mode: update an existing IM in-place rather than sending a new one
+      if (that.isEditMode && that.lastSentIMId)
+      {
+        const editId = that.lastSentIMId;
+        that.isEditMode = false;
+        that.sendBtn.setLabel("Send");
+        that.lastSentMessage = message;
+        that.chatInput.setValue("");
+        that.clearReplyMode();
+        const result = await app.sendIMEdit(editId, that.parseMessage(message), targetUsers);
+        if (!result) { that.chatInput.setValue(message); alert("Edit failed. Please try again."); }
+        return;
+      }
+
       if (app.cancelDistCooldown) app.cancelDistCooldown();
       that.setDistribution(targetUsers);
       if (app.syncChatSelection) app.syncChatSelection();
 
+      const replyTo = that.replyMode;
+      that.lastSentMessage = message;
       that.chatInput.setValue("");
+      that.clearReplyMode();
       let formattedMessage = that.parseMessage(message);
       const im = newIM(formattedMessage);
+      if (replyTo) im.replyTo = replyTo;
 
       log(im);
       //that.addIM(im);    // don't need to add locally as we'll add it on the SSE
@@ -1233,7 +1467,7 @@ qx.Class.define("myapp.ChatUI",
       }
     },
 
-    parseMessage(message) 
+    parseMessage(message)
     {
       // Replace basic emoticons
       message = message.replace(/:\)/g, '😊');
@@ -1243,7 +1477,75 @@ qx.Class.define("myapp.ChatUI",
       message = message.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
       message = message.replace(/__(.*?)__/g, '<em>$1</em>');
       message = message.replace(/`(.*?)`/g, '<code>$1</code>');
+
+      // Turn bare URLs into clickable links (applied last so markdown runs first)
+      message = message.replace(/(https?:\/\/[^\s<>"]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
+
       return message;
+    },
+
+    // Enter reply mode targeting the given IM; shows the reply strip above the input.
+    enterReplyMode(im)
+    {
+      const snippet = im.content.replace(/<[^>]+>/g, '').replace(/&[a-z]+;/gi, ' ').slice(0, 60);
+      this.replyMode = { id: im.id, user: im.user, snippet };
+      this.replyStripLabel.setValue('↩ ' + im.user + ': ' + snippet + (snippet.length >= 60 ? '…' : ''));
+      this.replyStrip.setVisibility("visible");
+      this.chatInput.focus();
+    },
+
+    clearReplyMode()
+    {
+      this.replyMode = null;
+      this.replyStrip.setVisibility("excluded");
+    },
+
+    scrollToBottom()
+    {
+      setTimeout(() => { try { this.chatScroll.scrollToY(this.chatScroll.getScrollMaxY()); } catch(e) {} }, 50);
+    },
+
+    // Send a single emoji as a reaction to targetIM (Level 2A quick-response).
+    // Renders as an annotation on the target message rather than a new timeline entry.
+    doQuickEmoji(emoji, targetIM, that)
+    {
+      const snippet = targetIM.content.replace(/<[^>]+>/g, '').replace(/&[a-z]+;/gi, ' ').slice(0, 60);
+      that.replyMode = { id: targetIM.id, user: targetIM.user, snippet, isReaction: true };
+      that.chatInput.setValue(emoji);
+      that.doMessage(that);
+    },
+
+    // Apply an in-place edit received via SSE.
+    applyIMEdit(obj)
+    {
+      // Update local model
+      if (this.chats)
+        for (const chat of this.chats)
+        {
+          const im = chat.ims.find(m => m.id === obj.id);
+          if (im) { im.content = obj.content; im.edited = true; break; }
+        }
+      // Update rendered label if the message is currently displayed
+      const entry = this.imLabels && this.imLabels[obj.id];
+      if (entry)
+      {
+        const str = '<b>' + entry.user + '</b> <font size="-2">' + entry.time.toString() + ' (edited):</font><br>' + obj.content + '<br> <br>';
+        entry.label.setValue(str);
+      }
+    },
+
+    // Scroll to and briefly highlight the message with the given id.
+    scrollToIM(id)
+    {
+      if (!id || !this.imContainers) return;
+      const container = this.imContainers[id];
+      if (!container) return;
+      const domEl = container.getContentElement().getDomElement();
+      if (!domEl) return;
+      domEl.scrollIntoView({ behavior: "smooth", block: "center" });
+      domEl.style.transition = "background-color 0.3s";
+      domEl.style.backgroundColor = "#ccaa00";
+      setTimeout(() => { domEl.style.backgroundColor = ""; }, 1200);
     },
   }
 });

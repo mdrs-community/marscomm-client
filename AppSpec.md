@@ -23,7 +23,23 @@ The application consists of two repos:
 - An IM sent from one planet is not visible on the other planet until the communications delay has elapsed.
 - While an IM is in transit to recipients on the other planet, a circular progress indicator is shown to the sender. No progress indicator is shown for IMs sent within a single planet (all recipients on the same planet as the sender).
 - When the user is viewing a past Sol (not the current one), the chat input is disabled.
-- Basic text formatting is supported: `**bold**`, `__italic__`, backtick code, and emoticons `:)` / `:(`.
+- The chat panel auto-scrolls to the bottom when a new message is rendered and when switching chats or Sols (most recent messages are shown).
+- Basic text formatting is supported: `**bold**`, `__italic__`, backtick code, and emoticons `:)` / `:(`
+- URLs in messages are automatically linkified (rendered as clickable `<a>` tags opening in a new tab).
+- IM text is selectable and copyable with the mouse.
+- Pressing the up-arrow key in an empty chat input recalls the last message the current user sent in the current chat session (pre-formatted raw text). If the original message's server-assigned ID is known, this enters **edit mode**: the Send button label changes to "Update" and sending will replace the original message in-place rather than creating a new one. The edit propagates to the other planet after the same comms delay as a new IM. Edited messages display "(edited)" in their timestamp. Switching chats or Sols clears edit mode.
+
+**Emoji quick-responses:**
+
+- A row of four emoji buttons — 👍 😊 😉 😞 — appears in the chat input area (above the text field). Clicking one appends the emoji to the text input (Level 2B).
+- Each rendered message shows a small always-visible emoji bar to its right with the same four emoji plus a ↩ reply button. Clicking an emoji immediately sends it as a reaction to that specific message (Level 2A). Reactions are rendered as a small grey annotation line below the target message body (`👍 Alice  😊 Bob`) rather than as a separate timeline entry, keeping the chat list in strict chronological order.
+
+**Replies:**
+
+- Each rendered message shows a **↩** button alongside its emoji bar. Clicking it enters *reply mode*: a dismissible strip appears above the chat input showing `↩ [user]: [snippet…]` with an ✕ to cancel. While in reply mode the strip remains visible across distribution changes.
+- When a message is sent in reply mode, the outgoing IM includes a `replyTo: { id, user, snippet }` field (where `id` is the server-assigned message ID, `snippet` is the first ~60 characters of the original message's plain text). Reply mode is cleared after sending.
+- IMs that have a `replyTo` field render a small grey italic header line above the message body: `↩ [user]: [snippet…]`. This header is a clickable link that scrolls to and briefly highlights (yellow flash) the original message in the current chat panel, identified by its `id`.
+- Message IDs are assigned by the server: each IM within a Chat receives a sequential integer `id` (1, 2, 3, …), scoped to that Chat. IDs are stable across server restarts (stored in `db.json`). The server includes `id` in both the stored IM and the SSE push payload.
 
 **Distribution (targeted messaging):**
 
@@ -150,6 +166,10 @@ After login, the client subscribes to `GET /events/:planet`. The server pushes t
 - **IM**: A new instant message. The pushed object includes the Chat's `users[]` array. If the current user is not in `chatUsers`, the IM is ignored entirely. If the Chat's user set matches the currently-selected distribution, the IM is displayed in the chat panel (comms-delay logic applies). If it matches a different Chat the user is on, that Chat's list item is marked unread (bold red) in the Chat list. Either way the IM is added to the appropriate Chat in the local model.
 - **Report**: A report update — the matching ReportUI is refreshed.
 
+**Sound effects (Web Audio API):**
+- When an IM from another user is displayed (either in the current chat or when marking a chat unread), a short hi-tech chirp plays. This is subject to a cooldown: it plays at most once per `messageArrivalSoundCooldown` seconds (fetched from `GET /message-arrival-sound-cooldown`; default 180). The AudioContext is created lazily on first use.
+- When a transmitted report arrives from the other planet (SSE `Report` event with `transmitted=true` and `authorPlanet !== planet`), a two-note ascending chime plays. No cooldown applies to report sounds.
+
 ### 7. Branding / Multi-Organization Support
 
 The server's `config.json` contains an `organization` field (`"MDRS"` or `"LunAres"`). At startup the client fetches this value and uses it to:
@@ -228,11 +248,14 @@ All server calls go to `urlPrefix`, which defaults to `http://localhost:8081/` b
 | `GET /organization` | Organization name (`MDRS` or `LunAres`) |
 | `GET /ref-date` | `{ refDate, missionStartDate, solDuration }` — `refDate` is one Earth day before `missionStartDate`; `missionStartDate` is YYYY-MM-DD of Sol 1 (null if not configured); `solDuration` is `"Earth"` or `"Mars"` |
 | `GET /users` | List of all users `[{role, name, planet, abbr?}]` (no passwords) |
+| `GET /distribution-cooldown` | `{ distributionCooldown }` in seconds |
+| `GET /message-arrival-sound-cooldown` | `{ messageArrivalSoundCooldown }` in seconds |
 | `GET /sols/:solNum` | Sol data (chats + reports for both planets) |
 | `GET /reports` | List of report names |
 | `GET /reports/templates` | Map of report name -> template HTML |
 | `GET /attachments/:planet/:solNum` | All attachments for a Sol/planet (base64 content) |
 | `GET /attachments/zip/:planet/:solNum` | Server-generated ZIP of attachments |
+| `GET /attachments/download?file=<opaque>&name=<orig>` | Download a single attachment file by its server-side opaque name, served with the original filename |
 | `GET /events/:planet` | SSE stream for real-time push |
 
 **POST endpoints used:**
@@ -256,7 +279,26 @@ Each Sol object (received from server) contains:
 
 Each **Chat** object:
 - `users[]`: sorted array of usernames who are members of this chat (includes sender)
-- `ims[]`: array of IM objects `{ type, content, user, planet, xmitTime, transmitted }`
+- `ims[]`: array of IM objects (see below)
+
+Each **IM** object:
+```
+{
+  type: "IM",
+  id: number,               // server-assigned sequential integer, scoped to this Chat
+  content: string,          // HTML-formatted message body
+  user: string,             // sender username
+  planet: "Earth"|"Mars",
+  xmitTime: Date,
+  transmitted: true,
+  replyTo?: {               // present only if this IM is a reply or emoji reaction
+    id: number,             // id of the original IM within this Chat
+    user: string,           // sender of the original IM
+    snippet: string,        // first ~60 chars of original IM plain text (HTML stripped)
+    isReaction?: true       // set when sent via emoji quick-response; renders as annotation, not timeline entry
+  }
+}
+```
 
 The client finds the Chat to display by comparing `chat.users` (sorted) against the currently-selected distribution (sorted, with current user always included).
 
