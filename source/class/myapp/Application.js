@@ -1120,13 +1120,14 @@ qx.Class.define("myapp.ChatUI",
     let chatPanel = new qx.ui.container.Composite(new qx.ui.layout.VBox());
     chatPanel.setPadding(10);
     this.chatPanel = chatPanel;
-    chatPanel.setDecorator("main");
+    // decorator moved to chatScroll so the border stays fixed and does not scroll
 
     // Set background image based on organization via CSS pseudo-element (see index.html)
     chatPanel.getContentElement().addClass(organization === "LunAres" ? "bg-lunares" : "bg-mdrs");
 
     let chatScroll = new qx.ui.container.Scroll();
     chatScroll.add(chatPanel);
+    chatScroll.setDecorator("main");
     chatContainer.add(chatScroll, { flex: 1 });
     this.chatScroll = chatScroll;
 
