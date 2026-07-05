@@ -1699,10 +1699,17 @@ qx.Class.define("myapp.ChatUI",
 
     scrollToBottom()
     {
-      // Double-rAF ensures Qooxdoo's async layout queue has flushed before we read scrollMaxY
-      requestAnimationFrame(() => requestAnimationFrame(() => {
-        try { this.chatScroll.scrollToY(this.chatScroll.getScrollMaxY()); } catch(e) {}
-      }));
+      // Retry until the pane DOM element exists — layout is async and may take several frames.
+      // Use raw DOM scrollTop so we don't depend on qx scroll API internals.
+      let attempts = 0;
+      const attempt = () => {
+        try {
+          const dom = this.chatScroll.getChildControl("pane").getContentElement().getDomElement();
+          if (dom) { dom.scrollTop = dom.scrollHeight; return; }
+        } catch(e) {}
+        if (++attempts < 20) setTimeout(attempt, 30);
+      };
+      setTimeout(attempt, 0);
     },
 
     // Send a single emoji as a reaction to targetIM (Level 2A quick-response).
