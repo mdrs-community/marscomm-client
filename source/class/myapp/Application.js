@@ -118,12 +118,13 @@ function setBGColor(btn, clr1, clr2)
        dom.style.setAttribute ("backgroundImage", img);
 }
 
-function makeButton(container, str, onExecute, color, fontSize, that, image)
+function makeButton(container, str, onExecute, color, fontSize, that, image, tooltip)
 {
   if (!fontSize) fontSize = 14;
   if (!color) color = "gray";
   const button = str ? new qx.ui.form.Button(str) : new qx.ui.form.Button(null, image);
   if (str) button.addListenerOnce("appear", function () { setBGColor(button, color); }, that);
+  if (tooltip) button.setToolTipText(tooltip);
   button.addListener("execute", onExecute, that);
   container.add(button);
   return button;
@@ -436,7 +437,7 @@ qx.Class.define("myapp.Application",
       this.filesCountLabel.setFont(qx.bom.Font.fromString("16px sans-serif"));
       this.filesCountLabel.setTextColor(themeBlueText());
       filesRow.add(this.filesCountLabel, { flex: 1 });
-      makeButton(filesRow, "Files\u2026", () => this.openFileManager(), themeButtonColor(), 14, this);
+      makeButton(filesRow, "Files\u2026", () => this.openFileManager(), themeButtonColor(), 14, this, null, "Browse and manage shared mission files");
       rightPanel.add(filesRow);
 
       // --- Distribution panel ---
@@ -645,9 +646,9 @@ qx.Class.define("myapp.Application",
 
       this.templates = await this.recvReportTemplates();
 
-      makeButton(topPanel, "⬇ Attachments...", () => this.downloadAttachments(),           themeButtonColor(), 16, this);
-      makeButton(topPanel, "⬇ Reports...",     () => this.createZipFromReports(reportUIs), themeButtonColor(), 16, this);
-      makeButton(topPanel, " ", () => this.toggleTheme(), themeButtonColor(), 16, this);
+      makeButton(topPanel, "⬇ Attachments...", () => this.downloadAttachments(),           themeButtonColor(), 16, this, null, "Download all report attachments as a zip file");
+      makeButton(topPanel, "⬇ Reports...",     () => this.createZipFromReports(reportUIs), themeButtonColor(), 16, this, null, "Download all reports as a zip file");
+      makeButton(topPanel, " ", () => this.toggleTheme(), themeButtonColor(), 16, this, null, "Switch between light and dark theme");
 
       this.loginButton = makeButton(topPanel, "Login", () => this.handleLoginLogout(), "#ffcccc", 16);
       this.planetIcon = new qx.ui.basic.Image("myapp/Earth.png");
@@ -1294,7 +1295,7 @@ qx.Class.define("myapp.ChatUI",
 
     // Joke mode toggle row — only shown when testMode is enabled in server config
     if (testMode) {
-      this.jokeBtn = makeButton(chatContainer, "Joke Mode: OFF", () => that.toggleJokeMode(), themeDisabledButtonColor(), 12, null);
+      this.jokeBtn = makeButton(chatContainer, "Joke Mode: OFF", () => that.toggleJokeMode(), themeDisabledButtonColor(), 12, null, null, "Toggle AI-assisted humorous replies (test mode only)");
     }
 
     let chatInputContainer = new qx.ui.container.Composite(new qx.ui.layout.HBox(10));
@@ -1799,19 +1800,19 @@ qx.Class.define("myapp.ReportUI",
     //fsb.setEnabled(false); // disabling the FileSelectorButton somehow prevents it working properly even after it's re-enabled
     this.fsButton = fsb;
 
-    this.amanButton = makeButton(container, "00", () => that.openAttachManager(), themeButtonColor(), 14, this);
+    this.amanButton = makeButton(container, "00", () => that.openAttachManager(), themeButtonColor(), 14, this, null, "Manage report attachments");
     const cimage = "myapp/copyIcon.png";
     const pimage = "myapp/pasteIcon.png";
-    this.copyButton = makeButton(container, null, () => navigator.clipboard.writeText(that.report.content), themeButtonColor(), 14, this, cimage);
-    this.pasteButton = makeButton(container, null, () => that.setContentFromBored(), "gray", 14, this, pimage);
+    this.copyButton = makeButton(container, null, () => navigator.clipboard.writeText(that.report.content), themeButtonColor(), 14, this, cimage, "Copy report content to clipboard");
+    this.pasteButton = makeButton(container, null, () => that.setContentFromBored(), "gray", 14, this, pimage, "Paste from MDRS/LunAres field report template");
 
-    this.editButton = makeButton(container, "Edit", () => that.openReportEditor(), "gray", 14, this);
+    this.editButton = makeButton(container, "Edit", () => that.openReportEditor(), "gray", 14, this, null, "Open report editor");
 
     this.approveButton = new qx.ui.form.CheckBox("Approve");
     this.approveButton.addListener("execute", () => { this.report.approved = this.approveButton.getValue() ? true : false; this.onChange(); })
     container.add(this.approveButton);
 
-    this.resetButton = makeButton(container, "Reset", () => that.onReset(), themeDisabledButtonColor(), 14, this);
+    this.resetButton = makeButton(container, "Reset", () => that.onReset(), themeDisabledButtonColor(), 14, this, null, "Reset report to default template");
 
     function onXmit()
     { 
@@ -1820,7 +1821,7 @@ qx.Class.define("myapp.ReportUI",
       app.transmitReport(that.report); // tell server to send report to other planet
       //that.realizeState("Transmitted"); // SSE will cause UI to be updated
     }
-    this.txButton = makeButton(container, "Transmit", onXmit, "gray", 14, this);
+    this.txButton = makeButton(container, "Transmit", onXmit, "gray", 14, this, null, "Transmit this report to the other planet");
     this.txButton.setEnabled(false);
 
     this.label = makeLabel(container, name, "gray", 18);
@@ -2556,10 +2557,10 @@ function makeFileManagerWindow(app, folders, files)
     row.add(badgeLabel, { flex: 2 });
 
     const btns = new qx.ui.container.Composite(new qx.ui.layout.HBox(3));
-    makeButton(btns, "\u2b07", function() { doDownload("files/download?id=" + file.id, file.name); }, themeButtonColor(), 11);
-    makeButton(btns, "\u270e", function() { onRename(file); }, themeButtonColor(), 11);
-    makeButton(btns, "\u21d2", function() { onMove(file);   }, themeButtonColor(), 11);
-    makeButton(btns, "\u2715", function() { onDelete(file); }, themeButtonColor(), 11);
+    makeButton(btns, "\u2b07", function() { doDownload("files/download?id=" + file.id, file.name); }, themeButtonColor(), 11, null, null, "Download");
+    makeButton(btns, "\u270e", function() { onRename(file); }, themeButtonColor(), 11, null, null, "Rename");
+    makeButton(btns, "\u21d2", function() { onMove(file);   }, themeButtonColor(), 11, null, null, "Move to another folder");
+    makeButton(btns, "\u2715", function() { onDelete(file); }, themeButtonColor(), 11, null, null, "Delete");
     row.add(btns);
 
     filePanel.add(row);
