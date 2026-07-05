@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MarsComm Help — Reports</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      font-size: 15px;
+      line-height: 1.6;
+      max-width: 780px;
+      margin: 40px auto;
+      padding: 0 24px 60px;
+      color: #222;
+      background: #fff;
+    }
+    h1 { font-size: 1.8em; color: #1a4a8a; border-bottom: 2px solid #1a4a8a; padding-bottom: 8px; }
+    h2 { font-size: 1.2em; color: #1a4a8a; margin-top: 2em; }
+    .state-table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+    .state-table th { background: #1a4a8a; color: white; padding: 8px 12px; text-align: left; }
+    .state-table td { padding: 7px 12px; border-bottom: 1px solid #ddd; vertical-align: top; }
+    .state-table tr:nth-child(even) td { background: #f4f7fb; }
+    .state { font-weight: bold; }
+    .note { background: #fff8e1; border-left: 4px solid #f9a825; padding: 10px 14px; margin: 1.2em 0; border-radius: 2px; }
+    .button-label { display: inline-block; background: #e8eef8; border: 1px solid #aac; border-radius: 4px; padding: 1px 7px; font-size: 0.9em; font-family: monospace; }
+  </style>
+</head>
+<body>
+
+<h1>Mission Reports</h1>
+
+<p>
+  The <strong>Reports</strong> panel lists all the daily and special reports for the current Sol (mission day).
+  Each report represents a formal written communication — crew members on Mars write reports and transmit
+  them to Mission Control on Earth, where they can be reviewed and approved.
+</p>
+
+<h2>Who Can See Which Reports?</h2>
+<p>
+  Each report type may be restricted to specific roles or groups. If you do not have access to a particular
+  report, it will not appear in your panel. For example, a Medical report may only be visible to the Medical
+  Officer and Mission Control Medical staff. If you believe you should see a report that is missing,
+  contact your mission coordinator.
+</p>
+
+<h2>Report States</h2>
+<p>
+  Every report goes through a series of states as it is written, transmitted, and reviewed.
+  The color of the report name indicates its current state:
+</p>
+
+<table class="state-table">
+  <tr>
+    <th>Color</th>
+    <th>State</th>
+    <th>Meaning</th>
+  </tr>
+  <tr>
+    <td>Orange</td>
+    <td class="state">TODO</td>
+    <td>The report exists but has no content yet. It needs to be written.</td>
+  </tr>
+  <tr>
+    <td>Blue</td>
+    <td class="state">Populated</td>
+    <td>Content has been written and saved, but not yet transmitted to the other planet.</td>
+  </tr>
+  <tr>
+    <td>Purple</td>
+    <td class="state">Transmitted / In Transit</td>
+    <td>The report has been transmitted and is traveling across the communications delay. A progress circle shows how much time remains.</td>
+  </tr>
+  <tr>
+    <td>Teal</td>
+    <td class="state">Received</td>
+    <td>The report has arrived at the other planet and can be read there.</td>
+  </tr>
+  <tr>
+    <td>Red</td>
+    <td class="state">Rejected</td>
+    <td>Mission Control has reviewed the report and rejected it (did not approve it).</td>
+  </tr>
+  <tr>
+    <td>Green</td>
+    <td class="state">Approved</td>
+    <td>Mission Control has reviewed and approved the report.</td>
+  </tr>
+</table>
+
+<h2>Writing a Report</h2>
+<p>
+  Click the <span class="button-label">Edit</span> button next to a report name to open the rich-text editor.
+  The editor will pre-fill with a standard template if the report is currently empty.
+  You can format text using the editor toolbar (bold, italic, font size, color, etc.).
+</p>
+<p>
+  You can also paste plain text directly into a report using the
+  <span class="button-label">Paste</span> button (the clipboard icon), which reads from your system
+  clipboard without opening the full editor. This is useful for pasting in text prepared elsewhere.
+</p>
+<p>
+  The <span class="button-label">Copy</span> button (the copy icon) copies the current report content
+  to your clipboard so you can paste it into another application.
+</p>
+
+<h2>Attachments</h2>
+<p>
+  You can attach files to a report using the file picker button in the report row.
+  Multiple files can be selected at once.
+  Once attached, the attachment count is shown on the
+  <span class="button-label">00</span> button (the number reflects how many attachments the report has).
+  Clicking that button opens the Attachment Manager, where you can view, download, or delete individual attachments.
+</p>
+
+<h2>Transmitting a Report</h2>
+<p>
+  When your report is ready, click <span class="button-label">Transmit</span> to send it to the other planet.
+  The report will travel across the one-way communications delay (the same delay that applies to chat messages).
+  A circular progress indicator shows the transmission in progress.
+  Once it arrives, Mission Control on Earth can read it.
+</p>
+<p>
+  You can only transmit a report from the current Sol, and only from your own planet.
+  You cannot transmit a report that you are viewing from a past Sol.
+</p>
+
+<h2>Approving a Report (Mission Control only)</h2>
+<p>
+  When a transmitted report arrives at Earth, Mission Control staff can check the
+  <span class="button-label">Approve</span> checkbox to mark it as approved.
+  Checking or unchecking this box updates the report state immediately (no separate transmit step needed
+  for approval status — it is communicated separately).
+</p>
+
+<h2>Resetting a Report (Mission Control only)</h2>
+<p>
+  The <span class="button-label">Reset</span> button is available to Mission Control staff on the current Sol.
+  It clears all content, attachments, and state from the report on both planets, returning it to the empty TODO state.
+  A confirmation prompt will appear before the reset is applied. This is intended for training exercises and
+  debugging — use with caution during a real mission.
+</p>
+
+<h2>Navigating Past Sols</h2>
+<p>
+  Use the Sol spinner in the top bar to navigate to any previous Sol and read its reports.
+  When viewing a past Sol, editing and transmitting are disabled — reports are read-only for historical Sols.
+</p>
+
+<div class="note">
+  <strong>Note:</strong> The communications delay applies to report transmission just like chat messages.
+  Once a report is transmitted, it cannot be recalled or edited during transit. Plan accordingly.
+</div>
+
+</body>
+</html>

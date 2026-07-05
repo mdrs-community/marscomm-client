@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MarsComm Help — Chat &amp; Distribution</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      font-size: 15px;
+      line-height: 1.6;
+      max-width: 780px;
+      margin: 40px auto;
+      padding: 0 24px 60px;
+      color: #222;
+      background: #fff;
+    }
+    h1 { font-size: 1.8em; color: #1a4a8a; border-bottom: 2px solid #1a4a8a; padding-bottom: 8px; }
+    h2 { font-size: 1.2em; color: #1a4a8a; margin-top: 2em; }
+    .note { background: #fff8e1; border-left: 4px solid #f9a825; padding: 10px 14px; margin: 1.2em 0; border-radius: 2px; }
+    .tip  { background: #e8f5e9; border-left: 4px solid #43a047; padding: 10px 14px; margin: 1.2em 0; border-radius: 2px; }
+    .button-label { display: inline-block; background: #e8eef8; border: 1px solid #aac; border-radius: 4px; padding: 1px 7px; font-size: 0.9em; font-family: monospace; }
+    ul { margin: 0.5em 0 0.5em 1.5em; }
+    li { margin-bottom: 0.3em; }
+  </style>
+</head>
+<body>
+
+<h1>Chat &amp; Distribution</h1>
+
+<p>
+  MarsComm's chat system lets crew members and Mission Control exchange text messages across the
+  communications delay. Every message is addressed to a specific set of people — its
+  <strong>distribution</strong>. Only users on that distribution can see the message.
+</p>
+
+<h2>The Communications Delay</h2>
+<p>
+  All messages travel with a one-way delay, simulating the speed-of-light lag between Earth and Mars.
+  When you send a message to someone on the other planet, they will not see it until the delay has elapsed.
+  Likewise, their reply will take the same amount of time to reach you. Plan for round-trip times of
+  twice the one-way delay.
+</p>
+<p>
+  Messages sent to someone on the <em>same</em> planet as you arrive instantly, with no delay.
+</p>
+<p>
+  While a message is in transit, a circular progress indicator is shown to the sender.
+  When the message arrives on the other side, a soft chime plays.
+</p>
+
+<h2>What Is a Distribution?</h2>
+<p>
+  The <strong>distribution</strong> is the list of people who are part of a conversation.
+  Think of it like the "To:" field on an email — only the people listed can see the messages.
+  The sender is always part of the distribution.
+</p>
+<p>
+  All messages that share the same distribution belong to the same <strong>Chat</strong>.
+  If you send a message to the Commander and Engineer, and later send another message to the same two people,
+  both messages appear in the same Chat thread.
+</p>
+
+<h2>Setting the Distribution</h2>
+<p>
+  Use the checkboxes in the Distribution panel to choose who your next message will go to.
+  Mission Control users are listed on the left, crew members on the right.
+  You do not need to check your own name — you are always included automatically.
+</p>
+<p>
+  The <strong>Group</strong> dropdown above the checkboxes provides convenient presets:
+</p>
+<ul>
+  <li><strong>All</strong> — selects everyone (crew and Mission Control together)</li>
+  <li><strong>Mission Control</strong> — selects all Earth-side staff</li>
+  <li><strong>Crew</strong> — selects all Mars-side crew members</li>
+  <li>Any custom groups defined for this mission (e.g. "Command", "Medical")</li>
+  <li><strong>Custom</strong> — set automatically when you check/uncheck boxes manually</li>
+</ul>
+<p>
+  After you change the distribution, wait a moment — the chat panel will update to show the
+  conversation thread for your selected group. If no conversation exists yet with that exact set of people,
+  the panel will be empty and your next message will start a new thread.
+</p>
+
+<h2>The Chat List</h2>
+<p>
+  The <strong>Chat list</strong> (the column on the left of the Distribution panel) shows all existing
+  conversations for the current Sol that include you. Click any item to switch to that conversation
+  and update the checkboxes to match its distribution.
+</p>
+<p>
+  Chat names are generated automatically:
+</p>
+<ul>
+  <li>If the distribution matches a named group (All, Mission Control, Crew, or a custom group), the chat is named after that group.</li>
+  <li>If the conversation is with exactly one other person, the chat is named after their role.</li>
+  <li>Otherwise, the chat is named by a short list of role abbreviations, e.g. <em>C, EO, MCD</em>. Hover over the name to see the full list of roles.</li>
+</ul>
+<p>
+  When a new message arrives in a conversation you are not currently viewing, that conversation's
+  name turns <strong style="color:red">bold red</strong> in the Chat list.
+  Clicking it will clear the unread indicator and show the messages.
+</p>
+
+<h2>Sending a Message</h2>
+<p>
+  Type your message in the text box at the bottom of the chat panel and press
+  <span class="button-label">Send</span> (or hit Enter).
+  The message will be added to the current Chat immediately on your side, and will arrive
+  on the other planet after the communications delay.
+</p>
+<p>
+  Basic text formatting is supported:
+</p>
+<ul>
+  <li><strong>**bold**</strong></li>
+  <li><em>__italic__</em></li>
+  <li><code>`code`</code></li>
+  <li>Emoticons: <code>:)</code> and <code>:(</code></li>
+  <li>URLs are automatically turned into clickable links</li>
+</ul>
+
+<h2>Emoji Reactions</h2>
+<p>
+  Each message has a small row of emoji buttons to its right: 👍 😊 😉 😞.
+  Clicking one sends that emoji as a <em>reaction</em> to that specific message.
+  Reactions appear as a small annotation line below the message rather than as a
+  separate chat entry, keeping the conversation thread readable.
+</p>
+<p>
+  You can also click the emoji buttons in the row <em>above</em> the message input to insert
+  that emoji into your message text.
+</p>
+
+<h2>Replies</h2>
+<p>
+  Click the <strong>↩</strong> button next to any message to enter <em>reply mode</em>.
+  A strip appears above the input box showing a snippet of the message you are replying to.
+  Your next sent message will be visually linked to the original, showing the quoted snippet.
+  Click the ✕ in the strip to cancel and return to normal messaging.
+</p>
+<p>
+  In the chat thread, reply headers are clickable — clicking one will scroll to and briefly
+  highlight the original message being replied to.
+</p>
+
+<h2>Editing a Sent Message</h2>
+<p>
+  Press the <strong>up-arrow key</strong> in an empty message input to recall your most recently
+  sent message for editing. Make your changes and press <span class="button-label">Update</span>
+  to replace the original. The edited version is delivered to recipients after the usual
+  communications delay, and shows an "(edited)" marker.
+</p>
+
+<h2>Navigating Past Sols</h2>
+<p>
+  Use the Sol spinner in the top bar to view chats from previous Sols.
+  When viewing a past Sol, the message input is disabled — you cannot send messages into the past.
+  The Chat list and messages are read-only for historical Sols.
+</p>
+
+<div class="note">
+  <strong>Remember:</strong> The person on the other planet has no idea you sent a message until the
+  delay has elapsed. There is no way to retract a message once sent. Read your message carefully before sending.
+</div>
+
+<div class="tip">
+  <strong>Tip:</strong> For private conversations within Mission Control or within the crew,
+  select only the relevant people using the checkboxes before sending.
+  This keeps the shared "All" thread focused on mission-wide communications.
+</div>
+
+</body>
+</html>

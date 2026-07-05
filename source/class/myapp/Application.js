@@ -415,7 +415,11 @@ qx.Class.define("myapp.Application",
       rightPanel.setDecorator("main");
       middleContainer.add(rightPanel);
 
-      makeLabel(rightPanel, "Reports", themeBlueText(), 18);
+      const reportsHeadRow = new qx.ui.container.Composite(new qx.ui.layout.HBox(6));
+      reportsHeadRow.setAlignY("middle");
+      makeLabel(reportsHeadRow, "Reports", themeBlueText(), 18);
+      makeButton(reportsHeadRow, "?", () => window.open(qx.util.ResourceManager.getInstance().toUri("myapp/help-reports.html"), "_blank"), themeButtonColor(), 11, this, null, "Help: how reports work");
+      rightPanel.add(reportsHeadRow);
       let reportNames = await this.recvReports();
       let reportUIs = [];
       log(reportNames);
@@ -446,7 +450,11 @@ qx.Class.define("myapp.Application",
       sep.setBackgroundColor(themeInactiveColor());
       rightPanel.add(sep);
 
-      makeLabel(rightPanel, "Distribution", themeBlueText(), 18);
+      const distHeadRow = new qx.ui.container.Composite(new qx.ui.layout.HBox(6));
+      distHeadRow.setAlignY("middle");
+      makeLabel(distHeadRow, "Distribution", themeBlueText(), 18);
+      makeButton(distHeadRow, "?", () => window.open(qx.util.ResourceManager.getInstance().toUri("myapp/help-distribution.html"), "_blank"), themeButtonColor(), 11, this, null, "Help: how chat and distribution work");
+      rightPanel.add(distHeadRow);
 
       const groupRow = new qx.ui.container.Composite(new qx.ui.layout.HBox(5));
       groupRow.setAlignY("middle");
