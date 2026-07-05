@@ -1557,7 +1557,7 @@ qx.Class.define("myapp.ChatUI",
         log("time since sent is " + timeSinceSent(im.xmitTime));
         if (inTransit(im) && crossPlanet) {
           const startProgress = commsDelay > 0 ? Math.min((commsDelay - timeRemaining) / commsDelay, 0.99) : 0;
-          const pw = startXmitProgressDisplay(timeRemaining, inner, 55, null, startProgress);
+          const pw = startXmitProgressDisplay(timeRemaining, inner, 40, null, startProgress);
           if (pw && pw.timer && this.activeTimers) this.activeTimers.push(pw.timer);
         }
 
@@ -2314,6 +2314,7 @@ function startXmitProgressDisplay(commsDelay, parentContainer, size, onDone, sta
   let circularProgress = new myapp.CircularProgress();
   circularProgress.setWidth(size);
   circularProgress.setHeight(size);
+  circularProgress.setMaxHeight(size);
   parentContainer.add(circularProgress);
 
   const totalUpdates = 100;
