@@ -167,6 +167,7 @@ When `solDuration = "Mars"`, the **Sol** label in the top bar is red (matching t
 After login, the client subscribes to `GET /events/:planet`. The server pushes two event types:
 - **IM**: A new instant message. The pushed object includes the Chat's `users[]` array. If the current user is not in `chatUsers`, the IM is ignored entirely. If the Chat's user set matches the currently-selected distribution, the IM is displayed in the chat panel (comms-delay logic applies). If it matches a different Chat the user is on, that Chat's list item is marked unread (bold red) in the Chat list. Either way the IM is added to the appropriate Chat in the local model.
 - **Report**: A report update — the matching ReportUI is refreshed.
+- **FileUpdate**: A file-system change. Fields: `op` (`"add"` | `"rename"` | `"move"` | `"delete"`), `file` (full file record). The client applies commsDelay for events originating from the other planet before updating the FileManager display. Same-planet events are applied immediately.
 
 **Sound effects (Web Audio API):**
 - When an IM from another user is displayed (either in the current chat or when marking a chat unread), a short hi-tech chirp plays. This is subject to a cooldown: it plays at most once per `messageArrivalSoundCooldown` seconds (fetched from `GET /message-arrival-sound-cooldown`; default 180). The AudioContext is created lazily on first use.
@@ -189,6 +190,40 @@ The server's `config.json` contains an `organization` field (`"MDRS"` or `"LunAr
 - Toggled via the " " button in the top bar; the theme preference is preserved in the URL query parameter `?theme=0` (dark) or `?theme=1` (light).
 - All color-producing functions (`themeBgColor`, `themeButtonColor`, etc.) check the global `theme` variable.
 
+### 9. File Sharing
+
+A shared file space is accessible to all users, organized into a fixed set of folders defined in `config.json` under `fileSystem.folders`. Files can be uploaded from either planet and are subject to the same one-way communications delay as IMs before becoming visible on the other planet.
+
+**Access control:**
+- Each folder has an optional `access[]` list using the same format as report access: role names, built-in group names (`"All"`, `"Mission Control"`, `"Crew"`), or custom group names from `config.json`.
+- If `access` is omitted, the folder is visible to all users.
+- Folders the current user cannot access are hidden entirely; files within inaccessible folders are not shown or fetched.
+- Access is enforced client-side (same mechanism as report access control).
+
+**UI — Files panel:**
+- A **Files** section appears in the right-hand panel, between Reports and the Distribution panel.
+- It shows a label with the count of accessible non-deleted files, and a **"Files…"** button that opens the FileManager dialog.
+
+**UI — FileManager dialog (`myapp.FileManager`):**
+- A modal Qooxdoo window.
+- Left pane: folder tree (`qx.ui.tree.Tree`) showing only accessible folders. Selecting a folder populates the right pane.
+- Right pane: file list for the selected folder. Each entry shows filename, uploader role, upload time, size, and an optional status badge:
+  - `⏳ In transit` — uploaded from the other planet; commsDelay has not yet elapsed
+  - `✓ Received` — arrived from the other planet (delay has elapsed)
+  - (no badge) — uploaded from the same planet as the viewer
+- **Per-file actions** (only available when viewing the current Sol; some restricted by operation):
+  - **Download**: streams the file to the browser via `GET /files/download?id=`.
+  - **Rename**: enter new name inline; the change is immediately applied server-side but only reaches the other planet after commsDelay.
+  - **Move**: dropdown of accessible folders; immediately applied server-side, delayed to other planet.
+  - **Delete**: with confirmation; soft-deletes the file (it remains in the DB with `deleted: true`); immediately visible on initiating planet, delayed to other planet.
+- **Upload**: a file picker button in the dialog toolbar uploads one or more files to the currently selected folder (multipart POST to `POST /files/upload`). The file is immediately visible on the uploader's planet.
+
+**Communications delay for file operations:**
+- **Upload (add):** file is visible immediately on the uploading planet; appears on the other planet after commsDelay.
+- **Rename / Move / Delete:** the operation is applied immediately on the initiating planet. The other planet sees the old state for commsDelay seconds, then transitions to the new state via SSE.
+- On reconnect, the `prevOp` field on a file record (if present and not yet expired) is used by the client to reconstruct the correct delayed view without replaying SSE events.
+- The server clears `prevOp` once its `xmitTime` is older than `commsDelay`.
+
 ---
 
 ## Technical Design — Client
@@ -206,6 +241,7 @@ The server's `config.json` contains an `organization` field (`"MDRS"` or `"LunAr
 source/
   class/myapp/
     Application.js        -- all application code (single file)
+    FileManager.js        -- file-sharing dialog (FileManager class)
     theme/
       Theme.js / Color.js / Appearance.js / Decoration.js / Font.js
   resource/myapp/
@@ -232,6 +268,7 @@ compile.json              -- Qooxdoo build config; defines app class and theme
 | `myapp.CKEditorWindow` | Modal Qooxdoo window containing a `CKEditor`. OK saves content back to `ReportUI`. |
 | `myapp.CircularProgress` | Canvas-based circular progress widget. Used during IM/report transit. |
 | `myapp.AttachmentManager` | Modal window to list, download, and delete report attachments. |
+| `myapp.FileManager` | Modal window for the file-sharing feature. Left pane: folder tree (`qx.ui.tree.Tree`). Right pane: file list with upload/rename/move/delete/download actions and transit status badges. |
 
 ### Server Communication
 
@@ -258,6 +295,8 @@ All server calls go to `urlPrefix`, which defaults to `http://localhost:8081/` b
 | `GET /attachments/:planet/:solNum` | All attachments for a Sol/planet (base64 content) |
 | `GET /attachments/zip/:planet/:solNum` | Server-generated ZIP of attachments |
 | `GET /attachments/download?file=<opaque>&name=<orig>` | Download a single attachment file by its server-side opaque name, served with the original filename |
+| `GET /files` | All file records (including `prevOp` when present) — used to populate the FileManager |
+| `GET /files/download?id=<id>` | Stream a file by its server-assigned ID; `Content-Disposition` uses the original filename |
 | `GET /events/:planet` | SSE stream for real-time push |
 
 **POST endpoints used:**
@@ -269,6 +308,10 @@ All server calls go to `urlPrefix`, which defaults to `http://localhost:8081/` b
 | `POST /reports/update` | Update report content/approval |
 | `POST /reports/transmit/:name` | Transmit report to other planet |
 | `POST /attachments` | Upload attachment files (multipart) |
+| `POST /files/upload` | Upload one or more files to a folder (multipart; fields: `files[]`, `folder`, `username`, `token`) |
+| `POST /files/rename` | Rename a file (`{ id, name, username, token }`) |
+| `POST /files/move` | Move a file to another folder (`{ id, folder, username, token }`) |
+| `POST /files/delete` | Soft-delete a file (`{ id, username, token }`) |
 
 ### Sol Data Model (client-side)
 
@@ -303,6 +346,39 @@ Each **IM** object:
 ```
 
 The client finds the Chat to display by comparing `chat.users` (sorted) against the currently-selected distribution (sorted, with current user always included).
+
+### File Data Model (client-side)
+
+File records are fetched via `GET /files` after login and updated in real time via SSE `FileUpdate` events.
+
+Each **File** object:
+```
+{
+  id: number,            // server-assigned sequential integer (global, not per-folder)
+  name: string,          // current filename
+  folder: string,        // current folder path (matches a config fileSystem.folders entry)
+  size: number,          // bytes
+  storedAs: string,      // opaque server-side storage name (not shown to user)
+  uploadedBy: string,    // username of uploader
+  planet: "Earth"|"Mars",
+  xmitTime: Date,        // when uploaded
+  deleted: boolean,      // true = soft-deleted
+  prevOp?: {             // present when a rename/move/delete is in transit to the other planet
+    op: "rename"|"move"|"delete",
+    planet: "Earth"|"Mars",  // planet that initiated the operation
+    xmitTime: Date,           // when the operation was initiated
+    prevName?: string,        // name before rename (for "rename")
+    prevFolder?: string       // folder before move (for "move")
+  }
+}
+```
+
+The client uses `prevOp` to reconstruct in-transit state on page load / reconnect:
+- `"rename"`: show `prevName` until `prevOp.xmitTime + commsDelay`
+- `"move"`: show in `prevFolder` until `prevOp.xmitTime + commsDelay`
+- `"delete"`: show as present until `prevOp.xmitTime + commsDelay`
+
+Once the delay has elapsed, the server has already cleared `prevOp` and the file record reflects the final state.
 
 ### IM Transit Logic
 

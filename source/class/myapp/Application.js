@@ -17,6 +17,8 @@ let app = null;
 let theme = 0; // 0=dark, 1=light
 let allUsers = [];
 let allGroups = [];
+let allFiles = [];
+let fileFolders = [];
 let distributionCooldown = 2;
 let messageArrivalSoundCooldown = 180;
 let testMode = false;
@@ -297,6 +299,7 @@ qx.Class.define("myapp.Application",
       distributionCooldown       = (await this.recvDistributionCooldown()).distributionCooldown || 2;
       messageArrivalSoundCooldown = (await this.recvMessageArrivalSoundCooldown()).messageArrivalSoundCooldown ?? 180;
       testMode = (await this.recvTestMode()).testMode ?? false;
+      fileFolders = (await this.recvFileFolders()) || [];
       if (testMode) {
         try {
           const resp = await fetch('resource/myapp/jokes.json');
@@ -422,6 +425,19 @@ qx.Class.define("myapp.Application",
         reportUIs.push(reportUI);
       });
       this.reportUIs = reportUIs;
+
+      // --- Files panel ---
+      const filesSep = new qx.ui.core.Widget();
+      filesSep.setHeight(1);
+      filesSep.setBackgroundColor(themeInactiveColor());
+      rightPanel.add(filesSep);
+      const filesRow = new qx.ui.container.Composite(new qx.ui.layout.HBox(8));
+      this.filesCountLabel = new qx.ui.basic.Label("Files");
+      this.filesCountLabel.setFont(qx.bom.Font.fromString("16px sans-serif"));
+      this.filesCountLabel.setTextColor(themeBlueText());
+      filesRow.add(this.filesCountLabel, { flex: 1 });
+      makeButton(filesRow, "Files\u2026", () => this.openFileManager(), themeButtonColor(), 14, this);
+      rightPanel.add(filesRow);
 
       // --- Distribution panel ---
       const sep = new qx.ui.core.Widget();
@@ -911,6 +927,8 @@ qx.Class.define("myapp.Application",
     async recvDistributionCooldown()        { return  await this.doGET('distribution-cooldown'); },
     async recvMessageArrivalSoundCooldown() { return  await this.doGET('message-arrival-sound-cooldown'); },
     async recvTestMode()                    { return  await this.doGET('test-mode'); },
+    async recvFiles()                       { return  await this.doGET('files'); },
+    async recvFileFolders()                 { return  await this.doGET('files/folders'); },
     
 
     //--------------------------------------------------------------------------------------------
@@ -993,6 +1011,7 @@ qx.Class.define("myapp.Application",
         // eventSource is tied to login because the planet can change
         this.setupSSE();
         this.applyReportAccess();
+        this.loadFiles();
       } 
       else if (result && result.message)
         alert(result.message);
@@ -1023,9 +1042,81 @@ qx.Class.define("myapp.Application",
       return false;
     },
 
+    canAccessFolder(folder)
+    {
+      if (!folder || !folder.access || !folder.access.length) return true;
+      const user = allUsers.find(u => u.name === username);
+      if (!user) return false;
+      for (const entry of folder.access) {
+        if (entry === "All") return true;
+        if (entry === user.role) return true;
+        if (entry === "Mission Control" && user.planet === "Earth") return true;
+        if (entry === "Crew" && user.planet === "Mars") return true;
+        const group = allGroups.find(g => g.name === entry);
+        if (group && group.roles.includes(user.role)) return true;
+      }
+      return false;
+    },
+
+    async loadFiles()
+    {
+      allFiles = (await this.recvFiles()) || [];
+      // Restore date objects after JSON deserialization
+      allFiles.forEach(f => {
+        f.xmitTime = new Date(f.xmitTime);
+        if (f.prevOp) f.prevOp.xmitTime = new Date(f.prevOp.xmitTime);
+      });
+      this.updateFilesDisplay();
+    },
+
+    updateFilesDisplay()
+    {
+      const count = allFiles.filter(f => {
+        if (f.deleted) {
+          // Still visible if prevOp "delete" from other planet is still in transit
+          if (!f.prevOp || f.prevOp.op !== 'delete' || f.prevOp.planet === planet || commsDelayPassed(f.prevOp.xmitTime)) return false;
+        }
+        const folder = fileFolders.find(fd => fd.path === f.folder);
+        return this.canAccessFolder(folder);
+      }).length;
+      if (this.filesCountLabel) this.filesCountLabel.setValue("Files (" + count + ")");
+      if (this.fileManager && !this.fileManager.isDisposed() && this.fileManager.getVisibility() === "visible")
+        this.fileManager.updateFiles(allFiles);
+    },
+
+    openFileManager()
+    {
+      if (!this.isLoggedIn) { alert("Please log in first."); return; }
+      const accessible = fileFolders.filter(fd => this.canAccessFolder(fd));
+      if (this.fileManager && !this.fileManager.isDisposed()) this.fileManager.destroy();
+      this.fileManager = new myapp.FileManager(this, accessible, allFiles.slice());
+      this.fileManager.center();
+      this.fileManager.open();
+    },
+
+    applyFileUpdate(event)
+    {
+      const f = event.file;
+      const idx = allFiles.findIndex(x => x.id === f.id);
+      if (idx >= 0) allFiles[idx] = f;
+      else allFiles.push(f);
+      this.updateFilesDisplay();
+      // Schedule a deferred refresh when the transit delay expires
+      let delayedTime = null;
+      if (event.op === 'add' && f.planet !== planet) delayedTime = f.xmitTime;
+      else if (f.prevOp && f.prevOp.planet !== planet) delayedTime = f.prevOp.xmitTime;
+      if (delayedTime && commsDelay > 0)
+      {
+        const remaining = commsDelay - (Date.now() - delayedTime.getTime()) / 1000;
+        if (remaining > 0) setTimeout(() => this.updateFilesDisplay(), remaining * 1000);
+      }
+    },
+
     logout()
     {
       if (this.reportUIs) this.reportUIs.forEach(rui => rui.container.setVisibility("visible"));
+      allFiles = [];
+      this.updateFilesDisplay();
       this.eventSource.close();
       this.eventSource = null;
       this.isLoggedIn = false;
@@ -1046,7 +1137,14 @@ qx.Class.define("myapp.Application",
         log("SSE received!!!!");
         log(event.data);
         const obj = JSON.parse(event.data);
-        if (app.isCurrentSol()) // ignore new messages if we aren't looking at the current Sol
+        if (obj.type === "FileUpdate")
+        {
+          obj.file.xmitTime = new Date(obj.file.xmitTime);
+          if (obj.file.prevOp) obj.file.prevOp.xmitTime = new Date(obj.file.prevOp.xmitTime);
+          app.applyFileUpdate(obj);
+        }
+        else if (app.isCurrentSol()) // ignore sol-specific messages if not on current Sol
+        {
           if (obj.type === "IM")
           {
             obj.xmitTime = new Date(obj.xmitTime); // ALWAYS have to fix the date.  ALWAYS
@@ -1070,6 +1168,7 @@ qx.Class.define("myapp.Application",
             }
             apply();
           }
+        }
       };
       this.eventSource.onerror = function(e)
       {
