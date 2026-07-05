@@ -609,11 +609,12 @@ qx.Class.define("myapp.Application",
         chats.filter(c => c.users.includes(username)).forEach(function(chat) {
           const key = distChatKey(chat.users);
           const name = getChatName(chat);
-          const lbl = new qx.ui.basic.Label(name);
+          const displayName = name.length > 20 ? name.slice(0, 20) + '\u2026' : name;
+          const lbl = new qx.ui.basic.Label(displayName);
           lbl.setFont(new qx.bom.Font(17, ["Arial"]));
           lbl.setTextColor(themeStdText());
           lbl.setCursor("pointer");
-          const tip = getChatTooltip(chat);
+          const tip = getChatTooltip(chat) || (name.length > 20 ? name : null);
           if (tip) lbl.setToolTipText(tip);
           lbl.addListener("tap", function() { onChatClick(chat, lbl); });
           if (key === currentDistKey) { lbl.setBackgroundColor(chatSelectColor()); selectedChatKey = key; }
@@ -658,7 +659,12 @@ qx.Class.define("myapp.Application",
       //this.planetIcon.setPadding(0);
       topPanel.add(this.planetIcon);
 
-      if (queryParams.user) 
+      const savedSession = sessionStorage.getItem('mc_session');
+      if (savedSession) {
+        sessionStorage.removeItem('mc_session');
+        const s = JSON.parse(savedSession);
+        await this.completeLogin(s.username, s.token, s.planet);
+      } else if (queryParams.user)
         await this.attemptLogin(queryParams.user, "word"); //TODO: disable autologin before release
       else
         this.openLoginDialog();
@@ -702,9 +708,11 @@ qx.Class.define("myapp.Application",
       }
     },
 
-    toggleTheme() 
-    { 
-      theme = theme ? 0 : 1; 
+    toggleTheme()
+    {
+      theme = theme ? 0 : 1;
+      if (this.isLoggedIn)
+        sessionStorage.setItem('mc_session', JSON.stringify({ username, token: this.token, planet }));
       const currentUrl = new URL(window.location.href);
       currentUrl.searchParams.set("theme", theme);
       window.location.href = currentUrl.toString();
@@ -987,39 +995,36 @@ qx.Class.define("myapp.Application",
       loginDialog.open();
     },
 
-    async attemptLogin(usernameIn, password, loginDialog) 
+    async attemptLogin(usernameIn, password, loginDialog)
     {
       const result = await this.sendLogin(usernameIn, password);
       if (result && result.token)
-      {
-        this.isLoggedIn = true;
-        username = usernameIn;
-        planet = result.planet;
-        this.token = result.token;
-        this.loginButton.setLabel(username + '[' + planet + ']');
-        const planetIconFile = planet === "Mars" ? "myapp/Mars.png" : "myapp/Earth.png";
-        this.planetIcon.setSource(planetIconFile);
-        const tpcolor = theme ? (planet === "Mars" ? "#ffeeee" : "#eeeeff") : (planet === "Mars" ? "#220000" : "#000022");
-        this.topPanel.setBackgroundColor(tpcolor);
-
-        if (loginDialog) loginDialog.close();
-        // now that we're logged in we can finish the startup
-        await this.changeSol(this, getSolNum());
-        this.numberInput.setValue(getSolNum());
-
-        const btnColor = planet === "Mars" ? (theme ? "#ffaaaa" : "#dd9999") : (theme ? "#aaaaff" : "#9999dd");
-        setBGColor(this.loginButton, btnColor);
-
-        // set up server-sent events
-        // eventSource is tied to login because the planet can change
-        this.setupSSE();
-        this.applyReportAccess();
-        this.loadFiles();
-      } 
+        await this.completeLogin(usernameIn, result.token, result.planet, loginDialog);
       else if (result && result.message)
         alert(result.message);
-      else 
+      else
         alert("Login failure for " + usernameIn);
+    },
+
+    async completeLogin(usernameIn, token, planetIn, loginDialog)
+    {
+      this.isLoggedIn = true;
+      username = usernameIn;
+      planet = planetIn;
+      this.token = token;
+      this.loginButton.setLabel(username + '[' + planet + ']');
+      const planetIconFile = planet === "Mars" ? "myapp/Mars.png" : "myapp/Earth.png";
+      this.planetIcon.setSource(planetIconFile);
+      const tpcolor = theme ? (planet === "Mars" ? "#ffeeee" : "#eeeeff") : (planet === "Mars" ? "#220000" : "#000022");
+      this.topPanel.setBackgroundColor(tpcolor);
+      if (loginDialog) loginDialog.close();
+      await this.changeSol(this, getSolNum());
+      this.numberInput.setValue(getSolNum());
+      const btnColor = planet === "Mars" ? (theme ? "#ffaaaa" : "#dd9999") : (theme ? "#aaaaff" : "#9999dd");
+      setBGColor(this.loginButton, btnColor);
+      this.setupSSE();
+      this.applyReportAccess();
+      this.loadFiles();
     },
 
     applyReportAccess()
@@ -1117,6 +1122,7 @@ qx.Class.define("myapp.Application",
 
     logout()
     {
+      sessionStorage.removeItem('mc_session');
       if (this.reportUIs) this.reportUIs.forEach(rui => rui.container.setVisibility("visible"));
       allFiles = [];
       this.updateFilesDisplay();
@@ -1568,7 +1574,18 @@ qx.Class.define("myapp.ChatUI",
       else // IM is NOT from this planet and has not yet arrived, so wait for it
       {
         log("scheduling IM arrival in " + timeRemaining);
-        setTimeout(() => this.addIM(im, chatUsers), timeRemaining*1000);
+        setTimeout(() =>
+        {
+          // Re-check distribution at render time — user may have switched chats during transit
+          const currentKey = this.distribution ? this.distribution.slice().sort().join('\t') : '';
+          const imChatKey  = (chatUsers || []).slice().sort().join('\t');
+          if (currentKey === imChatKey) {
+            this.addIM(im, chatUsers);
+          } else {
+            if (im.user !== username) playIMArrivedSound();
+            if (app.markChatUnread) app.markChatUnread(chatUsers);
+          }
+        }, timeRemaining*1000);
       }
     },
 
