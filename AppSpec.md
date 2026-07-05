@@ -240,8 +240,7 @@ A shared file space is accessible to all users, organized into a fixed set of fo
 ```
 source/
   class/myapp/
-    Application.js        -- all application code (single file)
-    FileManager.js        -- file-sharing dialog (FileManager class)
+    Application.js        -- all application code (single file; includes FileManager class at bottom)
     theme/
       Theme.js / Color.js / Appearance.js / Decoration.js / Font.js
   resource/myapp/
