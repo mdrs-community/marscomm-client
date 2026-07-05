@@ -187,8 +187,9 @@ The server's `config.json` contains an `organization` field (`"MDRS"` or `"LunAr
 ### 8. Theme
 
 - Dark mode (default) and light mode are supported.
-- Toggled via the " " button in the top bar; the theme preference is preserved in the URL query parameter `?theme=0` (dark) or `?theme=1` (light).
+- Toggled via the " " button in the top bar (tooltip: "Switch between light and dark theme"); the theme preference is preserved in the URL query parameter `?theme=0` (dark) or `?theme=1` (light).
 - All color-producing functions (`themeBgColor`, `themeButtonColor`, etc.) check the global `theme` variable.
+- All non-obvious buttons carry descriptive `ToolTipText` strings. The `makeButton(container, label, handler, color, fontSize, scope, image, tooltip)` helper accepts an optional `tooltip` parameter for this purpose.
 
 ### 9. File Sharing
 
@@ -204,9 +205,9 @@ A shared file space is accessible to all users, organized into a fixed set of fo
 - A **Files** section appears in the right-hand panel, between Reports and the Distribution panel.
 - It shows a label with the count of accessible non-deleted files, and a **"Files…"** button that opens the FileManager dialog.
 
-**UI — FileManager dialog (`myapp.FileManager`):**
-- A modal Qooxdoo window.
-- Left pane: folder tree (`qx.ui.tree.Tree`) showing only accessible folders. Selecting a folder populates the right pane.
+**UI — FileManager dialog (`makeFileManagerWindow`):**
+- A modal Qooxdoo window (returned by a factory function, not a `qx.Class`).
+- Left pane: folder tree (`qx.ui.tree.Tree`) showing only accessible folders. Folder `path` values containing `"/"` (e.g. `"Photos/EVA"`) create a nested hierarchy in the tree; intermediate nodes are created automatically. Selecting a leaf folder populates the right pane.
 - Right pane: file list for the selected folder. Each entry shows filename, uploader role, upload time, size, and an optional status badge:
   - `⏳ In transit` — uploaded from the other planet; commsDelay has not yet elapsed
   - `✓ Received` — arrived from the other planet (delay has elapsed)
@@ -240,7 +241,7 @@ A shared file space is accessible to all users, organized into a fixed set of fo
 ```
 source/
   class/myapp/
-    Application.js        -- all application code (single file; includes FileManager class at bottom)
+    Application.js        -- all application code (single file; includes makeFileManagerWindow factory at bottom)
     theme/
       Theme.js / Color.js / Appearance.js / Decoration.js / Font.js
   resource/myapp/
@@ -267,7 +268,7 @@ compile.json              -- Qooxdoo build config; defines app class and theme
 | `myapp.CKEditorWindow` | Modal Qooxdoo window containing a `CKEditor`. OK saves content back to `ReportUI`. |
 | `myapp.CircularProgress` | Canvas-based circular progress widget. Used during IM/report transit. |
 | `myapp.AttachmentManager` | Modal window to list, download, and delete report attachments. |
-| `myapp.FileManager` | Modal window for the file-sharing feature. Left pane: folder tree (`qx.ui.tree.Tree`). Right pane: file list with upload/rename/move/delete/download actions and transit status badges. |
+| `makeFileManagerWindow(app, folders, files)` | Factory function (not a qx.Class — defined at module scope in Application.js to share file-scoped helpers). Returns a modal `qx.ui.window.Window`. Left pane: folder tree (`qx.ui.tree.Tree`) with "/" path hierarchy support. Right pane: file list with upload/rename/move/delete/download actions and transit status badges. |
 
 ### Server Communication
 

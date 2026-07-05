@@ -356,10 +356,10 @@ qx.Class.define("myapp.Application",
       {
         const phaseBox = new qx.ui.container.Composite(new qx.ui.layout.HBox(4));
         phaseBox.setPaddingLeft(8);
-        const phaseLabel = makeLabel(phaseBox, "", "orange", 14);
+        const phaseLabel = makeLabel(phaseBox, "", "orange", 17);
         const timeBox = new qx.ui.container.Composite(new qx.ui.layout.VBox(0));
-        const earthTimeLabel = makeLabel(timeBox, "", themeBlueText(), 11);
-        const solTimeLabel   = makeLabel(timeBox, "", "red", 11);
+        const earthTimeLabel = makeLabel(timeBox, "", themeBlueText(), 13);
+        const solTimeLabel   = makeLabel(timeBox, "", "red", 13);
         phaseBox.add(timeBox);
         topPanel.add(phaseBox);
 
@@ -530,6 +530,7 @@ qx.Class.define("myapp.Application",
       }
       function addUserCheckbox(col, u) {
         const cb = new qx.ui.form.CheckBox(u.role + " (" + u.name + ")");
+        cb.setFont(new qx.bom.Font(14, ["Arial"]));
         cb.setValue(true);
         cb.setTextColor(themeStdText());
         cb.addListener("changeValue", function() {
@@ -577,7 +578,7 @@ qx.Class.define("myapp.Application",
         selectedChatKey = key;
         // Clear unread state
         const entry = chatItemsByKey[key];
-        if (entry) { entry.unread = false; lbl.setTextColor(themeStdText()); lbl.setFont(null); }
+        if (entry) { entry.unread = false; lbl.setTextColor(themeStdText()); lbl.setFont(new qx.bom.Font(17, ["Arial"])); }
         setCheckboxes(chat.users);
         setGroupDropdown(chat.users);
         that.chatUI.setDistribution(chat.users);
@@ -609,6 +610,7 @@ qx.Class.define("myapp.Application",
           const key = distChatKey(chat.users);
           const name = getChatName(chat);
           const lbl = new qx.ui.basic.Label(name);
+          lbl.setFont(new qx.bom.Font(17, ["Arial"]));
           lbl.setTextColor(themeStdText());
           lbl.setCursor("pointer");
           const tip = getChatTooltip(chat);
@@ -626,7 +628,7 @@ qx.Class.define("myapp.Application",
         if (entry && !entry.unread) {
           entry.unread = true;
           entry.label.setTextColor("red");
-          entry.label.setFont(new qx.bom.Font(14, ["Arial"]).set({ bold: true }));
+          entry.label.setFont(new qx.bom.Font(17, ["Arial"]).set({ bold: true }));
         }
       };
 
@@ -1523,7 +1525,7 @@ qx.Class.define("myapp.ChatUI",
         const label = new qx.ui.basic.Label().set({ value: str, rich: true, selectable: true });
         const color = theme ? ((im.user === username) ? "#0000bb" : "black") : (im.user === username) ? "#9999ff" : "white";
         label.setTextColor(color);
-        label.setFont(new qx.bom.Font(16, ["Arial"]));
+        label.setFont(new qx.bom.Font(19, ["Arial"]));
         inner.add(label, { flex: 1 });
         if (im.id)
         {
