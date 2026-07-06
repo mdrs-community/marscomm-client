@@ -45,7 +45,7 @@ The application consists of two repos:
 
 Each message is addressed to a specific set of users — its *distribution*. Messages with the same distribution belong to the same *Chat*. The Distribution panel lets the user choose a distribution and see existing Chats they are part of.
 
-The **Distribution panel** occupies the lower portion of the right-hand panel (below a horizontal separator). It is wrapped in a scroll container and has three columns side by side:
+The **Distribution panel** occupies the lower portion of the right-hand panel (below a horizontal separator). Its heading row includes a clickable **ⓘ** icon that opens `help-distribution.html` in a new browser tab. It is wrapped in a scroll container and has three columns side by side:
 
 **Column 1 — Chat list:**
 - Lists all Chats for the current Sol in which the current user is a member.
@@ -60,6 +60,8 @@ The **Distribution panel** occupies the lower portion of the right-hand panel (b
 3. Otherwise, the Chat is named by a comma-separated list of abbreviated roles for all users except the current user, e.g. `"C,EO,MCM"`. A tooltip on the item shows the full unabbreviated role list. Abbreviations are defined by the optional `"abbr"` field on each user entry in `config.json`.
 
 Because naming is client-side and relative to the current user, each user sees at most one Chat per group name — no duplicates can arise from a single user's perspective.
+
+Chat list display names are truncated to 20 characters with a `…` suffix if longer. When truncated, the full name is shown in a tooltip (falling back to the full name if no other tooltip would have been set).
 
 **Column 2 — Mission Control checkboxes:**
 - One checkbox per Earth user, labelled `"<role> (<name>)"`.
@@ -107,6 +109,8 @@ Each Sol (mission day) has a set of daily reports and optionally one or more spe
 - **Transmit**: Sends the current version of the report to the other planet. A circular progress indicator is shown during transit. On arrival, the other planet's copy is updated and all clients on that planet are notified via SSE.
 
 **Report templates** are loaded from the server. When opening an empty report, the editor is pre-populated with the template for that report type. Templates support placeholders: `{crewNum}`, `{date}`, `{solNum}`.
+
+The **Reports** heading row includes a clickable **ⓘ** icon that opens `help-reports.html` in a new browser tab.
 
 ### 3. Download
 
@@ -161,6 +165,7 @@ When `solDuration = "Mars"`, the **Sol** label in the top bar is red (matching t
 - A planet icon (Earth or Mars image) is shown in the top bar.
 - The query parameter `?user=<name>` can be used for auto-login during development.
 - Server-Sent Events (SSE) are established per-planet after login to receive real-time push updates. If the SSE connection drops, the client automatically reconnects after 5 seconds (as long as the user is still logged in).
+- **Session preservation across theme reload**: toggling the theme causes a full page reload (to update the `?theme=` query parameter). Before reloading, `{username, token, planet}` is saved to `sessionStorage`. On startup, if this key is present, `completeLogin()` is called directly with the stored credentials (bypassing the login dialog). The key is consumed immediately and cleared on explicit logout.
 
 ### 6. Real-Time Updates (SSE)
 
@@ -252,6 +257,8 @@ source/
     Earth.png / Mars.png  -- planet icons
     Earth.webp            -- alternate Earth image
     copyIcon.png / pasteIcon.png  -- report toolbar icons
+    help-reports.html             -- hand-editable help page for the Reports feature
+    help-distribution.html        -- hand-editable help page for the Chat/Distribution feature
   boot/
     index.html            -- HTML entry point; loads CKEditor 5 and JSZip CDN scripts
 compile.json              -- Qooxdoo build config; defines app class and theme
@@ -385,7 +392,8 @@ Once the delay has elapsed, the server has already cleared `prevOp` and the file
 - `inTransit(im)`: true if `im.transmitted` and comms delay has NOT elapsed since `xmitTime`
 - If from the same planet or already arrived: display immediately
 - If from other planet and still in transit: `setTimeout` to display after remaining delay
-- A `CircularProgress` spinner is shown during transit
+- A `CircularProgress` spinner is shown during transit (capped at 40×40 px)
+- **Routing is re-evaluated at render time**: if a cross-planet IM arrives via SSE while the user is viewing Chat X, and the user switches to Chat Y before the transit delay expires, the IM appears in Chat X (or marks it unread) rather than being incorrectly rendered into Chat Y. The distribution check happens inside the deferred `setTimeout` callback, not at SSE receipt time.
 
 ---
 
