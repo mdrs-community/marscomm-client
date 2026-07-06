@@ -46,7 +46,9 @@
 
 <h2>Report States</h2>
 <p>
-  Every report goes through a series of states as it is written, transmitted, and reviewed.
+  Every report goes through a series of states as it is written, transmitted, and reviewed.  The normal flow is for the crew
+  to write a report and for Mission Control to either approve the report (in which case the workflow is complete), or to add 
+  comments that ask for a revision from the crew. 
   The color of the report name indicates its current state:
 </p>
 
@@ -64,12 +66,12 @@
   <tr>
     <td>Blue</td>
     <td class="state">Populated</td>
-    <td>Content has been written and saved, but not yet transmitted to the other planet.</td>
+    <td>Content has been written and saved locally, but not yet transmitted to the other planet.</td>
   </tr>
   <tr>
     <td>Purple</td>
     <td class="state">Transmitted / In Transit</td>
-    <td>The report has been transmitted and is traveling across the communications delay. A progress circle shows how much time remains.</td>
+    <td>The report has been transmitted to the other planet, subject to the communications delay. A progress circle shows how much time remains.</td>
   </tr>
   <tr>
     <td>Teal</td>
@@ -89,9 +91,12 @@
 </table>
 
 <h2>Writing a Report</h2>
+<p> MarsComm gives users the choice of either writing reports within MarsComm itself, or writing them using 
+  other preferred tools and just pasting them into MarsComm.
+</p>
 <p>
   Click the <span class="button-label">Edit</span> button next to a report name to open the rich-text editor.
-  The editor will pre-fill with a standard template if the report is currently empty.
+  The editor will pre-fill with a standard template (which is defined by Mission Control) if the report is currently empty.
   You can format text using the editor toolbar (bold, italic, font size, color, etc.).
 </p>
 <p>
@@ -116,12 +121,12 @@
 <h2>Transmitting a Report</h2>
 <p>
   When your report is ready, click <span class="button-label">Transmit</span> to send it to the other planet.
-  The report will travel across the one-way communications delay (the same delay that applies to chat messages).
+  The report will travel subject to the one-way communications delay (the same delay that applies to chat messages).
   A circular progress indicator shows the transmission in progress.
-  Once it arrives, Mission Control on Earth can read it.
+  Once it arrives, people on the other planet can read it.
 </p>
 <p>
-  You can only transmit a report from the current Sol, and only from your own planet.
+  You can only transmit a report on the current Sol, and only from your own planet.
   You cannot transmit a report that you are viewing from a past Sol.
 </p>
 
@@ -145,6 +150,12 @@
 <p>
   Use the Sol spinner in the top bar to navigate to any previous Sol and read its reports.
   When viewing a past Sol, editing and transmitting are disabled — reports are read-only for historical Sols.
+</p>
+
+<h2>Downloading Reports</h2>
+<p>
+  Reports and report attachments can be batch-downloaded (mainly for the convenience of Mission Control) by using 
+  the "v Reports..." and "v Attachments..." buttons.
 </p>
 
 <div class="note">

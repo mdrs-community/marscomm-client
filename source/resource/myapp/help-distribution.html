@@ -29,7 +29,7 @@
 <h1>Chat &amp; Distribution</h1>
 
 <p>
-  MarsComm's chat system lets crew members and Mission Control exchange text messages across the
+  MarsComm's chat system lets crew members and Mission Control exchange text messages subject to a 
   communications delay. Every message is addressed to a specific set of people — its
   <strong>distribution</strong>. Only users on that distribution can see the message.
 </p>
@@ -39,17 +39,19 @@
   All messages travel with a one-way delay, simulating the speed-of-light lag between Earth and Mars.
   When you send a message to someone on the other planet, they will not see it until the delay has elapsed.
   Likewise, their reply will take the same amount of time to reach you. Plan for round-trip times of
-  twice the one-way delay.
+  twice the one-way delay.  MarsComm supports both realistic Mars delays and delays that are shorter or longer.
+  The delay used is chosen by Mission Control in alignment with mission objectives.
 </p>
 <p>
   Messages sent to someone on the <em>same</em> planet as you arrive instantly, with no delay.
 </p>
 <p>
-  While a message is in transit, a circular progress indicator is shown to the sender.
+  While a message is in transit, a circular progress indicator is shown to the sender and to
+  others on the same planet who have visibiilty of that message.
   When the message arrives on the other side, a soft chime plays.
 </p>
 
-<h2>What Is a Distribution?</h2>
+<h2>What is a Distribution?</h2>
 <p>
   The <strong>distribution</strong> is the list of people who are part of a conversation.
   Think of it like the "To:" field on an email — only the people listed can see the messages.
@@ -58,7 +60,9 @@
 <p>
   All messages that share the same distribution belong to the same <strong>Chat</strong>.
   If you send a message to the Commander and Engineer, and later send another message to the same two people,
-  both messages appear in the same Chat thread.
+  both messages appear in the same Chat thread.  Note, however, that if someone else sends a message to the 
+  same two people (Commander and Engineer in this example), it will be in a different Chat because the sender 
+  is implicitly included on the Chat.
 </p>
 
 <h2>Setting the Distribution</h2>
@@ -68,7 +72,7 @@
   You do not need to check your own name — you are always included automatically.
 </p>
 <p>
-  The <strong>Group</strong> dropdown above the checkboxes provides convenient presets:
+  The <strong>Group</strong> dropdown above the checkboxes provides convenient presets for the Distribution:
 </p>
 <ul>
   <li><strong>All</strong> — selects everyone (crew and Mission Control together)</li>
@@ -101,6 +105,17 @@
   When a new message arrives in a conversation you are not currently viewing, that conversation's
   name turns <strong style="color:red">bold red</strong> in the Chat list.
   Clicking it will clear the unread indicator and show the messages.
+</p>
+
+<h2>Distribution vs. Group vs. Chat</h2>
+<p>
+ While Distribution, Group, Chat are closely related concepts, they are not the same things.  Remember:
+<ul>
+  <li>A distribution is just a set of users that will get a message.</li>
+  <li>A group is just a convenient way of choosing a distribution.</li>
+  <li>When a message is sent to a distribution, a Chat is automatically created unless one with the exact same distribtion already exists.  It is within a Chat that messages live.</li>
+</ul>
+This system makes it very easy and convenient to send messages to exactly who you want, as Chats are created automatically as needed.
 </p>
 
 <h2>Sending a Message</h2>

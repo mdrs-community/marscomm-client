@@ -418,7 +418,12 @@ qx.Class.define("myapp.Application",
       const reportsHeadRow = new qx.ui.container.Composite(new qx.ui.layout.HBox(6));
       reportsHeadRow.setAlignY("middle");
       makeLabel(reportsHeadRow, "Reports", themeBlueText(), 18);
-      makeButton(reportsHeadRow, "?", () => window.open(qx.util.ResourceManager.getInstance().toUri("myapp/help-reports.html"), "_blank"), themeButtonColor(), 11, this, null, "Help: how reports work");
+      const reportsHelp = new qx.ui.basic.Label("\u24d8");
+      reportsHelp.set({ cursor: "pointer", selectable: false, toolTipText: "Help: how reports work" });
+      reportsHelp.setFont(new qx.bom.Font(14, ["Arial"]));
+      reportsHelp.setTextColor("#cc8800");
+      reportsHelp.addListener("click", () => window.open(qx.util.ResourceManager.getInstance().toUri("myapp/help-reports.html"), "_blank"));
+      reportsHeadRow.add(reportsHelp);
       rightPanel.add(reportsHeadRow);
       let reportNames = await this.recvReports();
       let reportUIs = [];
@@ -453,7 +458,12 @@ qx.Class.define("myapp.Application",
       const distHeadRow = new qx.ui.container.Composite(new qx.ui.layout.HBox(6));
       distHeadRow.setAlignY("middle");
       makeLabel(distHeadRow, "Distribution", themeBlueText(), 18);
-      makeButton(distHeadRow, "?", () => window.open(qx.util.ResourceManager.getInstance().toUri("myapp/help-distribution.html"), "_blank"), themeButtonColor(), 11, this, null, "Help: how chat and distribution work");
+      const distHelp = new qx.ui.basic.Label("\u24d8");
+      distHelp.set({ cursor: "pointer", selectable: false, toolTipText: "Help: how chat and distribution work" });
+      distHelp.setFont(new qx.bom.Font(14, ["Arial"]));
+      distHelp.setTextColor("#cc8800");
+      distHelp.addListener("click", () => window.open(qx.util.ResourceManager.getInstance().toUri("myapp/help-distribution.html"), "_blank"));
+      distHeadRow.add(distHelp);
       rightPanel.add(distHeadRow);
 
       const groupRow = new qx.ui.container.Composite(new qx.ui.layout.HBox(5));
