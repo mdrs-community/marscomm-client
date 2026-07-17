@@ -223,8 +223,6 @@ function newIM(content)
   that.xmitTime = new Date();
   that.transmitted = true; // IMs are automatically transmitted
 
-  that.received = function () { return commsDelayPassed(that.xmitTime); }
-  
   return that;
 }
 
@@ -693,8 +691,6 @@ qx.Class.define("myapp.Application",
 
     }, //-------------- end of main()
 
-    sleep(ms) { return new Promise((resolve) => { setTimeout(resolve, ms); }); },
-
     getReportUIbyName(name)
     {
       const reportUIs = this.reportUIs;
@@ -748,49 +744,6 @@ qx.Class.define("myapp.Application",
       that.sol = sol;
       that.syncDisplay();
     },    
-
-    addContent(chatPanel, numberInput) 
-    {
-      let number = numberInput.getValue();
-      for (let i = 0; i < number; i++) {
-        let newMessage = new qx.ui.basic.Label(`New message ${i + 1}`);
-        chatPanel.add(newMessage);
-      }
-    },
-
-    doMessage(chatPanel, chatInput) 
-    {
-      let message = chatInput.getValue().trim();
-      if (!message) 
-      {
-        alert("Please enter a message.");
-        return;
-      }
-
-      // Simple markdown and emoticon parsing
-      let formattedMessage = this.parseMessage(message);
-      let newMessage = new qx.ui.basic.Label().set({ value: formattedMessage, rich: true });
-      chatPanel.add(newMessage);
-      chatInput.setValue("");
-      this.sendIM(formattedMessage);
-    },
-
-    parseMessage(message)
-    {
-      // Replace basic emoticons
-      message = message.replace(/:\)/g, '😊');
-      message = message.replace(/:\(/g, '😞');
-
-      // Replace markdown formatting
-      message = message.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-      message = message.replace(/__(.*?)__/g, '<em>$1</em>');
-      message = message.replace(/`(.*?)`/g, '<code>$1</code>');
-
-      // Turn bare URLs into clickable links (applied last so markdown runs first)
-      message = message.replace(/(https?:\/\/[^\s<>"]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
-
-      return message;
-    },
 
     //--------------------------------------------------------------------------------------------
     // networking/server comms
@@ -886,17 +839,6 @@ qx.Class.define("myapp.Application",
       this.doPOST('reports/update', body);
     },
 
-    async sendAttachment(reportName, filename, content)
-    {
-      const body = 
-      {
-        reportName: reportName,
-        filename: filename,
-        content: content, 
-      };
-      this.doPOST('reports/add-attachment', body);
-    },
-
     async sendAttachments(report, files)
     {
       log("sending " + files.length + " dataers");
@@ -951,7 +893,7 @@ qx.Class.define("myapp.Application",
     async recvVersion()         { return  await this.doGET('version'); },
     async recvRefDate()         { return  await this.doGET('ref-date'); },
     async recvReportTemplates() { return  await this.doGET('reports/templates'); },
-    async recvAttachments()          { return  await this.doGET('attachments/' + planet + '/' + getSolNum()); },
+    async recvAttachments()          { return  await this.doGET('attachments/' + planet + '/' + this.getUiSolNum()); },
     async recvUsers()                { return  await this.doGET('users'); },
     async recvDistributionCooldown()        { return  await this.doGET('distribution-cooldown'); },
     async recvMessageArrivalSoundCooldown() { return  await this.doGET('message-arrival-sound-cooldown'); },
@@ -1049,31 +991,15 @@ qx.Class.define("myapp.Application",
     {
       if (!this.reportUIs) return;
       for (const rui of this.reportUIs)
-        rui.container.setVisibility(this.canAccessReport(rui.meta) ? "visible" : "excluded");
+        rui.container.setVisibility(this.canAccess(rui.meta) ? "visible" : "excluded");
     },
 
-    canAccessReport(meta)
+    canAccess(item) // item is a report definition or folder definition with an optional access[] list
     {
-      if (!meta || !meta.access || !meta.access.length) return true;
+      if (!item || !item.access || !item.access.length) return true;
       const user = allUsers.find(u => u.name === username);
       if (!user) return false;
-      for (const entry of meta.access) {
-        if (entry === "All") return true;
-        if (entry === user.role) return true;
-        if (entry === "Mission Control" && user.planet === "Earth") return true;
-        if (entry === "Crew" && user.planet === "Mars") return true;
-        const group = allGroups.find(g => g.name === entry);
-        if (group && group.roles.includes(user.role)) return true;
-      }
-      return false;
-    },
-
-    canAccessFolder(folder)
-    {
-      if (!folder || !folder.access || !folder.access.length) return true;
-      const user = allUsers.find(u => u.name === username);
-      if (!user) return false;
-      for (const entry of folder.access) {
+      for (const entry of item.access) {
         if (entry === "All") return true;
         if (entry === user.role) return true;
         if (entry === "Mission Control" && user.planet === "Earth") return true;
@@ -1103,7 +1029,7 @@ qx.Class.define("myapp.Application",
           if (!f.prevOp || f.prevOp.op !== 'delete' || f.prevOp.planet === planet || commsDelayPassed(f.prevOp.xmitTime)) return false;
         }
         const folder = fileFolders.find(fd => fd.path === f.folder);
-        return this.canAccessFolder(folder);
+        return this.canAccess(folder);
       }).length;
       if (this.filesCountLabel) this.filesCountLabel.setValue("Files (" + count + ")");
       if (this.fileManager && !this.fileManager.isDisposed() && this.fileManager.getVisibility() === "visible")
@@ -1113,7 +1039,7 @@ qx.Class.define("myapp.Application",
     openFileManager()
     {
       if (!this.isLoggedIn) { alert("Please log in first."); return; }
-      const accessible = fileFolders.filter(fd => this.canAccessFolder(fd));
+      const accessible = fileFolders.filter(fd => this.canAccess(fd));
       if (this.fileManager && !this.fileManager.isDisposed()) this.fileManager.destroy();
       this.fileManager = makeFileManagerWindow(this, accessible, allFiles.slice());
       this.fileManager.center();
@@ -1662,17 +1588,11 @@ qx.Class.define("myapp.ChatUI",
       }
     },
 
-    doMessages(that)
-    {
-      for (let i = 0; i < 15; i++)
-      {
-        that.doMessage(that);
-        that.chatInput.setValue("peat and repeat");
-      }
-    },
-
     parseMessage(message)
     {
+      // Escape HTML special characters so message text cannot inject markup/script
+      message = message.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
       // Replace basic emoticons
       message = message.replace(/:\)/g, '😊');
       message = message.replace(/:\(/g, '😞');
@@ -2089,9 +2009,7 @@ const editorConfig =
 
 	image: { toolbar: ['toggleImageCaption',	'imageTextAlternative',	'|', 'imageStyle:inline',	'imageStyle:wrapText', 'imageStyle:breakText', '|',	'resizeImage'	]	},
 
-  initialData: '<h2>Congratulations on setting up CKEditor 5! 🎉</h2>\n<p>\n    You\'ve successfully created a CKEditor 5 project. This powerful text editor will enhance your application, enabling rich text editing\n    capabilities that are customizable and easy to use.\n</p>\n<h3>What\'s next?</h3>\n<ol>\n    <li>\n        <strong>Integrate into your app</strong>: time to bring the editing into your application. Take the code you created and add to your\n        application.\n    </li>\n    <li>\n        <strong>Explore features:</strong> Experiment with different plugins and toolbar options to discover what works best for your needs.\n    </li>\n    <li>\n        <strong>Customize your editor:</strong> Tailor the editor\'s configuration to match your application\'s style and requirements. Or even\n        write your plugin!\n    </li>\n</ol>\n<p>\n    Keep experimenting, and don\'t hesitate to push the boundaries of what you can achieve with CKEditor 5. Your feedback is invaluable to us\n    as we strive to improve and evolve. Happy editing!\n</p>\n<h3>Helpful resources</h3>\n<ul>\n    <li>📝 <a href="https://orders.ckeditor.com/trial/premium-features">Trial sign up</a>,</li>\n    <li>📕 <a href="https://ckeditor.com/docs/ckeditor5/latest/installation/index.html">Documentation</a>,</li>\n    <li>⭐️ <a href="https://github.com/ckeditor/ckeditor5">GitHub</a> (star us if you can!),</li>\n    <li>🏠 <a href="https://ckeditor.com">CKEditor Homepage</a>,</li>\n    <li>🧑‍💻 <a href="https://ckeditor.com/ckeditor-5/demo/">CKEditor 5 Demos</a>,</li>\n</ul>\n<h3>Need help?</h3>\n<p>\n    See this text, but the editor is not starting up? Check the browser\'s console for clues and guidance. It may be related to an incorrect\n    license key if you use premium features or another feature-related requirement. If you cannot make it work, file a GitHub issue, and we\n    will help as soon as possible!\n</p>\n',
-
-  link: 
+  link:
   {
 		addTargetToExternalLinks: true,
 		defaultProtocol: 'https://',

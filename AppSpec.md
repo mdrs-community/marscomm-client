@@ -24,7 +24,7 @@ The application consists of two repos:
 - While an IM is in transit to recipients on the other planet, a circular progress indicator is shown to the sender. No progress indicator is shown for IMs sent within a single planet (all recipients on the same planet as the sender).
 - When the user is viewing a past Sol (not the current one), the chat input is disabled.
 - The chat panel auto-scrolls to the bottom when a new message is rendered and when switching chats or Sols (most recent messages are shown).
-- Basic text formatting is supported: `**bold**`, `__italic__`, backtick code, and emoticons `:)` / `:(`
+- Basic text formatting is supported: `**bold**`, `__italic__`, backtick code, and emoticons `:)` / `:(`. Message text is HTML-escaped before formatting is applied, so typed HTML renders as literal text rather than markup.
 - URLs in messages are automatically linkified (rendered as clickable `<a>` tags opening in a new tab).
 - IM text is selectable and copyable with the mouse.
 - Pressing the up-arrow key in an empty chat input recalls the last message the current user sent in the current chat session (pre-formatted raw text). If the original message's server-assigned ID is known, this enters **edit mode**: the Send button label changes to "Update" and sending will replace the original message in-place rather than creating a new one. The edit propagates to the other planet after the same comms delay as a new IM. Edited messages display "(edited)" in their timestamp. Switching chats or Sols clears edit mode.
@@ -114,8 +114,8 @@ The **Reports** heading row includes a clickable **ⓘ** icon that opens `help-r
 
 ### 3. Download
 
-- **⬇ Reports ZIP**: Downloads a ZIP archive containing all reports for the current Sol as `.txt` files, plus all attachments grouped by report name.
-- **⬇ Attachments ZIP**: Downloads a server-side ZIP of all raw attachment files for the current Sol and planet.
+- **⬇ Reports ZIP**: Downloads a ZIP archive containing all reports for the currently-viewed Sol as `.txt` files, plus all attachments grouped by report name.
+- **⬇ Attachments ZIP**: Downloads a server-side ZIP of all raw attachment files for the currently-viewed Sol and planet.
 
 The top-bar buttons for these actions use the Unicode downward-arrow character ⬇ (U+2B07) in place of the word "Download" to save space.
 
