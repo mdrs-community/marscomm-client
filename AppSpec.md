@@ -51,13 +51,13 @@ The **Distribution panel** occupies the lower portion of the right-hand panel (b
 - Lists all Chats for the current Sol in which the current user is a member.
 - Items are singly selectable; no item is selected by default.
 - When a new IM arrives via SSE for a Chat that is not currently selected, that Chat's list item is shown in **bold red** (unread indicator). The indicator is cleared when the item is clicked.
-- Unread state is session-only and applies only to the current Sol (SSE only delivers messages for the current Sol).
+- Unread state is session-only and applies only to the current Sol (new messages always belong to the current Sol, and the client ignores IM events while viewing a past Sol).
 - When a Chat item is clicked, its messages are displayed immediately in the chat panel, and the Group dropdown and checkboxes are updated to reflect the Chat's user set (no cooldown).
 
 **Chat naming** (all logic is client-side, relative to the current user):
 1. If `Set(chat.users) \ {currentUser}` equals `Set(group_users) \ {currentUser}` for a built-in group (All / Mission Control / Crew) or a config-defined custom group, the Chat is named after that group.
 2. If the Chat has exactly one other user, the Chat is named that user's role.
-3. Otherwise, the Chat is named by a comma-separated list of abbreviated roles for all users except the current user, e.g. `"C,EO,MCM"`. A tooltip on the item shows the full unabbreviated role list. Abbreviations are defined by the optional `"abbr"` field on each user entry in `config.json`.
+3. Otherwise, the Chat is named by a comma-separated sorted list of abbreviated roles for all users except the current user, e.g. `"C,EO,MCM"`. A tooltip on the item shows the full unabbreviated role list. Abbreviations are defined by the optional `"abbr"` field on each user entry in `config.json`; users without an `abbr` are listed by username.
 
 Because naming is client-side and relative to the current user, each user sees at most one Chat per group name — no duplicates can arise from a single user's perspective.
 
@@ -121,7 +121,7 @@ The top-bar buttons for these actions use the Unicode downward-arrow character �
 
 ### 4. Sol Navigation
 
-- A spinner in the top bar allows the user to navigate to any Sol (0 to rotationLength+1).
+- A spinner in the top bar allows the user to navigate to any past Sol (0 up to the current Sol). The spinner's maximum is the current Sol number and is updated as time passes, so future Sols are not navigable.
 - A "Today" button next to the spinner sets the spinner to the Sol number corresponding to today's date.
 - The current Sol is computed from the server-provided reference date and `missionStartDate`.
 - When the Sol changes, the chat and report panels are refreshed with data for that Sol.
@@ -169,10 +169,13 @@ When `solDuration = "Mars"`, the **Sol** label in the top bar is red (matching t
 
 ### 6. Real-Time Updates (SSE)
 
-After login, the client subscribes to `GET /events/:planet`. The server pushes two event types:
+After login, the client subscribes to `GET /events/:planet`. The server pushes four event types:
 - **IM**: A new instant message. The pushed object includes the Chat's `users[]` array. If the current user is not in `chatUsers`, the IM is ignored entirely. If the Chat's user set matches the currently-selected distribution, the IM is displayed in the chat panel (comms-delay logic applies). If it matches a different Chat the user is on, that Chat's list item is marked unread (bold red) in the Chat list. Either way the IM is added to the appropriate Chat in the local model.
 - **Report**: A report update — the matching ReportUI is refreshed.
+- **IMEdit**: An in-place edit of an existing IM (`{ id, content, user, planet, xmitTime, chatUsers }`). If the edit originated on the other planet, the client waits out the remaining commsDelay before applying it; then the local model and (if displayed) the rendered message label are updated, with "(edited)" appended to the timestamp.
 - **FileUpdate**: A file-system change. Fields: `op` (`"add"` | `"rename"` | `"move"` | `"delete"`), `file` (full file record). The client applies commsDelay for events originating from the other planet before updating the FileManager display. Same-planet events are applied immediately.
+
+IM, Report, and IMEdit events are ignored while the user is viewing a past Sol (they always pertain to the current Sol; navigating back to the current Sol re-fetches its data from the server). FileUpdate events are always processed since files are not Sol-scoped.
 
 **Sound effects (Web Audio API):**
 - When an IM from another user is displayed (either in the current chat or when marking a chat unread), a short hi-tech chirp plays. This is subject to a cooldown: it plays at most once per `messageArrivalSoundCooldown` seconds (fetched from `GET /message-arrival-sound-cooldown`; default 180). The AudioContext is created lazily on first use.
@@ -181,7 +184,7 @@ After login, the client subscribes to `GET /events/:planet`. The server pushes t
 ### 7. Branding / Multi-Organization Support
 
 The server's `config.json` contains an `organization` field (`"MDRS"` or `"LunAres"`). At startup the client fetches this value and uses it to:
-- Set the app title label: `"<Organization> MarsComm"`
+- Set the app title label: `"<Organization> MarsComm"`. Next to the title, two small grey labels show version info for the server and client repos (`git tag (short-hash) commit-date`), fetched from `GET /version`.
 - Show the organization logo (30x30px, scaled):
   - MDRS: `myapp/MDRSlogo.jpg`
   - LunAres: `myapp/LunAreslogo.png`
@@ -198,7 +201,7 @@ The server's `config.json` contains an `organization` field (`"MDRS"` or `"LunAr
 
 ### 9. File Sharing
 
-A shared file space is accessible to all users, organized into a fixed set of folders defined in `config.json` under `fileSystem.folders`. Files can be uploaded from either planet and are subject to the same one-way communications delay as IMs before becoming visible on the other planet.
+A shared file space is accessible to all users, organized into a fixed set of folders defined in `config.json` under `fileSystem.folders` (fetched by the client at startup via `GET /files/folders`). Files can be uploaded from either planet and are subject to the same one-way communications delay as IMs before becoming visible on the other planet.
 
 **Access control:**
 - Each folder has an optional `access[]` list using the same format as report access: role names, built-in group names (`"All"`, `"Mission Control"`, `"Crew"`), or custom group names from `config.json`.
@@ -217,7 +220,7 @@ A shared file space is accessible to all users, organized into a fixed set of fo
   - `⏳ In transit` — uploaded from the other planet; commsDelay has not yet elapsed
   - `✓ Received` — arrived from the other planet (delay has elapsed)
   - (no badge) — uploaded from the same planet as the viewer
-- **Per-file actions** (only available when viewing the current Sol; some restricted by operation):
+- **Per-file actions** (files are not Sol-scoped, so these are available regardless of which Sol is being viewed):
   - **Download**: streams the file to the browser via `GET /files/download?id=`.
   - **Rename**: enter new name inline; the change is immediately applied server-side but only reaches the other planet after commsDelay.
   - **Move**: dropdown of accessible folders; immediately applied server-side, delayed to other planet.
@@ -237,8 +240,8 @@ A shared file space is accessible to all users, organized into a fixed set of fo
 ### Technology Stack
 
 - **Framework**: Qooxdoo 7.7.2 (`@qooxdoo/framework`)
-- **Rich text editor**: CKEditor 5 (loaded externally via `index.html`)
-- **ZIP creation**: JSZip (loaded externally via `index.html`)
+- **Rich text editor**: CKEditor 5 (bundled locally in `source/resource/myapp/lib/`, loaded by `index.html`)
+- **ZIP creation**: JSZip (bundled locally in `source/resource/myapp/lib/`, loaded by `index.html`)
 - **Build tool**: Qooxdoo compiler (`npx qx compile`)
 
 ### Source Layout
@@ -259,8 +262,11 @@ source/
     copyIcon.png / pasteIcon.png  -- report toolbar icons
     help-reports.html             -- hand-editable help page for the Reports feature
     help-distribution.html        -- hand-editable help page for the Chat/Distribution feature
+    jokes.json                    -- joke list for test-mode Joke Mode (65 entries)
+    lib/                          -- locally bundled CKEditor 5 and JSZip (js + css)
   boot/
-    index.html            -- HTML entry point; loads CKEditor 5 and JSZip CDN scripts
+    index.html            -- HTML entry point; loads CKEditor 5 and JSZip from resource/myapp/lib/;
+                             defines the .bg-mdrs/.bg-lunares chat background CSS classes
 compile.json              -- Qooxdoo build config; defines app class and theme
 ```
 
@@ -292,6 +298,8 @@ All server calls go to `urlPrefix`, which defaults to `http://localhost:8081/` b
 | `GET /crew-num` | Crew number |
 | `GET /rotation-length` | Number of Sols in rotation |
 | `GET /organization` | Organization name (`MDRS` or `LunAres`) |
+| `GET /version` | `{ server: {tag, hash, date}, client: {tag, hash, date} }` — git version info shown in the top bar |
+| `GET /test-mode` | `{ testMode }` — whether test/debug features (Joke Mode) are enabled |
 | `GET /ref-date` | `{ refDate, missionStartDate, solDuration }` — `refDate` is one Earth day before `missionStartDate`; `missionStartDate` is YYYY-MM-DD of Sol 1 (null if not configured); `solDuration` is `"Earth"` or `"Mars"` |
 | `GET /users` | List of all users `[{role, name, planet, abbr?}]` (no passwords) |
 | `GET /distribution-cooldown` | `{ distributionCooldown }` in seconds |
@@ -302,6 +310,7 @@ All server calls go to `urlPrefix`, which defaults to `http://localhost:8081/` b
 | `GET /attachments/:planet/:solNum` | All attachments for a Sol/planet (base64 content) |
 | `GET /attachments/zip/:planet/:solNum` | Server-generated ZIP of attachments |
 | `GET /attachments/download?file=<opaque>&name=<orig>` | Download a single attachment file by its server-side opaque name, served with the original filename |
+| `GET /files/folders` | Folder definitions from config `fileSystem.folders` (`[{path, access?}]`) |
 | `GET /files` | All file records (including `prevOp` when present) — used to populate the FileManager |
 | `GET /files/download?id=<id>` | Stream a file by its server-assigned ID; `Content-Disposition` uses the original filename |
 | `GET /events/:planet` | SSE stream for real-time push |
@@ -314,6 +323,7 @@ All server calls go to `urlPrefix`, which defaults to `http://localhost:8081/` b
 | `POST /ims` | Send an instant message to a targeted distribution |
 | `POST /reports/update` | Update report content/approval |
 | `POST /reports/transmit/:name` | Transmit report to other planet |
+| `POST /reports/reset/:name` | Reset report to Empty on both planets (Earth users only; see Reset above) |
 | `POST /attachments` | Upload attachment files (multipart) |
 | `POST /files/upload` | Upload one or more files to a folder (multipart; fields: `files[]`, `folder`, `username`, `token`) |
 | `POST /files/rename` | Rename a file (`{ id, name, username, token }`) |
@@ -343,6 +353,7 @@ Each **IM** object:
   planet: "Earth"|"Mars",
   xmitTime: Date,
   transmitted: true,
+  edited?: true,            // set when the content has been replaced via POST /ims/edit
   replyTo?: {               // present only if this IM is a reply or emoji reaction
     id: number,             // id of the original IM within this Chat
     user: string,           // sender of the original IM
